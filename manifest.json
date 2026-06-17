@@ -1,11 +1,11 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
-	"version": "1.0.0",
+	"id": "better-tables",
+	"name": "Better Tables",
+	"version": "0.1.0-beta.1",
 	"minAppVersion": "1.0.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"description": "Enhanced table support for Obsidian with advanced features like table headers, cell merging, and more.",
+	"author": "SunnyYYLin",
+	"authorUrl": "",
+	"fundingUrl": "",
 	"isDesktopOnly": false
 }

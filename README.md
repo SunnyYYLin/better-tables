@@ -1,92 +1,144 @@
-# Obsidian Sample Plugin
+# Better Tables
 
-This is a sample plugin for Obsidian (https://obsidian.md).
+Enhanced table support for Obsidian with advanced features like table headers, cell merging, and more.
 
-This project uses TypeScript to provide type checking and documentation.
-The repo depends on the latest plugin API (obsidian.d.ts) in TypeScript Definition format, which contains TSDoc comments describing what it does.
+## Features
 
-This sample plugin demonstrates some of the basic functionality the plugin API can do.
+- **Table Headers**: Support for header rows and header columns
+- **Cell Merging**: Merge cells horizontally and vertically
+- **Column Resizing**: Drag to resize columns, auto-fit, and equalize column widths
+- **Table Captions**: Add captions above tables
+- **Formula Support**: Basic formula support in table cells
+- **Multiline Cells**: Support for newlines within cells
+- **Alignment Options**: Horizontal and vertical alignment for cells
+- **Context Menu**: Right-click context menu for table operations
+- **Preview Mode Support**: All features work in Obsidian's preview mode
 
-- Adds a ribbon icon, which shows a Notice when clicked.
-- Adds a command "Open modal (simple)" which opens a Modal.
-- Adds a plugin setting tab to the settings page.
-- Registers a global click event and outputs a Notice on click.
-- Registers a global interval which logs 'setInterval' to the console.
+## Installation
 
-## First time developing plugins?
+1. Download the latest release from GitHub
+2. Copy `main.js`, `manifest.json`, and `styles.css` to your vault: `VaultFolder/.obsidian/plugins/better-tables/`
+3. Enable the plugin in Settings → Community plugins
 
-Quick starting guide for new plugin devs:
+## Usage
 
-- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
-- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
-- Install NodeJS, then run `npm i` in the command line under your repo folder.
-- Run `npm run dev` to compile your plugin from `src/main.ts` to `main.js`.
-- Make changes to `src/main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
-- Reload Obsidian to load the new version of your plugin.
-- Enable plugin in settings window.
-- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
+### Basic Usage
 
-## Releasing new releases
+The plugin automatically enhances tables in preview mode. Simply create a standard markdown table:
 
-- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
-- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
-- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
-- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
-- Publish the release.
-
-> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
-> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
-
-## Adding your plugin to the community plugin list
-
-- Check the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
-- Publish an initial version.
-- Make sure you have a `README.md` file in the root of your repo.
-- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
-
-## How to use
-
-- Clone this repo.
-- Make sure your NodeJS is at least v18 (`node --version`).
-- `npm i` to install dependencies.
-- `npm run dev` to start compilation in watch mode.
-
-## Manually installing the plugin
-
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
-
-## Improve code quality with eslint
-
-- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code.
-- This project already has eslint preconfigured, you can invoke a check by running`npm run lint`
-- Together with a custom eslint [plugin](https://github.com/obsidianmd/eslint-plugin) for Obsidan specific code guidelines.
-- A GitHub action is preconfigured to automatically lint every commit on all branches.
-
-## Funding URL
-
-You can include funding URLs where people who use your plugin can financially support it.
-
-The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
-
-```json
-{
-	"fundingUrl": "https://buymeacoffee.com"
-}
+```markdown
+| Header 1 | Header 2 | Header 3 |
+|----------|----------|----------|
+| Cell 1   | Cell 2   | Cell 3   |
+| Cell 4   | Cell 5   | Cell 6   |
 ```
 
-If you have multiple URLs, you can also do:
+### Table Captions
 
-```json
-{
-	"fundingUrl": {
-		"Buy Me a Coffee": "https://buymeacoffee.com",
-		"GitHub Sponsor": "https://github.com/sponsors",
-		"Patreon": "https://www.patreon.com/"
-	}
-}
+Add a caption by placing a paragraph starting with "Table:" before your table:
+
+```markdown
+Table: My Table Caption
+
+| Header 1 | Header 2 |
+|----------|----------|
+| Cell 1   | Cell 2   |
 ```
 
-## API Documentation
+### Commands
 
-See https://docs.obsidian.md
+- **Toggle header row**: Toggle the first row as a header
+- **Toggle header column**: Toggle the first column as a header
+- **Add table caption**: Add a caption to the current table
+
+### Context Menu
+
+Right-click on any table to access:
+- Toggle Header Row
+- Toggle Header Column
+- Add Caption
+- Auto-fit Columns
+- Equal Column Width
+
+### Column Resizing
+
+- **Drag to resize**: Hover over the right edge of a header cell and drag to resize
+- **Double-click to auto-fit**: Double-click the resize handle to auto-fit the column width
+- **Equal column widths**: Use the context menu to make all columns equal width
+
+### Formula Support
+
+Use formulas in table cells by starting with `=`:
+```markdown
+| Value 1 | Value 2 | Sum |
+|---------|---------|-----|
+| 10      | 20      | =10+20 |
+```
+
+### Multiline Cells
+
+Use `\n` for newlines within cells:
+```markdown
+| Description |
+|-------------|
+| Line 1\nLine 2 |
+```
+
+## Settings
+
+- **Enable advanced tables**: Enable/disable all advanced features
+- **Enable header row**: Automatically format the first row as a header
+- **Enable header column**: Automatically format the first column as a header
+- **Enable cell merging**: Allow merging cells in tables
+- **Enable formula support**: Support formulas in table cells (starting with =)
+- **Enable newline in cells**: Support newlines in table cells using \n
+- **Enable table caption**: Support table captions above the table
+- **Default horizontal alignment**: Default horizontal alignment for table cells
+- **Default vertical alignment**: Default vertical alignment for table cells
+
+## Examples
+
+### Complete Example
+
+```markdown
+Table: Quarterly Sales Report
+
+| Product | Q1 | Q2 | Q3 | Q4 | Total |
+|---------|----|----|----|----|-------|
+| Widget A | 100 | 150 | 200 | 250 | =100+150+200+250 |
+| Widget B | 80 | 120 | 160 | 200 | =80+120+160+200 |
+| Widget C | 50 | 75 | 100 | 125 | =50+75+100+125 |
+```
+
+### Table with Multiline Cells
+
+```markdown
+| Feature | Description |
+|---------|-------------|
+| Header Rows | Automatically format the first row as a header\nwith bold text and centered alignment |
+| Header Columns | Automatically format the first column as a header\nwith bold text and centered alignment |
+```
+
+### Table with Alignment
+
+```markdown
+| Left Aligned | Center Aligned | Right Aligned |
+|:-------------|:--------------:|--------------:|
+| Text | Text | Text |
+| More text | More text | More text |
+```
+
+## Development
+
+1. Clone this repository
+2. Run `bun install` to install dependencies
+3. Run `bun run dev` to start development with hot reload
+4. Run `bun run build` to build for production
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+BSD-0-Clause License

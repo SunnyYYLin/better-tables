@@ -1,8 +1,183 @@
-/*
+/* Better Tables Plugin Styles */
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+.table-caption {
+	font-weight: bold;
+	margin-bottom: 0.5em;
+	text-align: center;
+	font-size: 1.1em;
+	color: var(--text-normal);
+}
 
-If your plugin does not need CSS, delete this file.
+.better-table {
+	border-collapse: collapse;
+	width: 100%;
+	margin: 1em 0;
+	position: relative;
+}
 
-*/
+.better-table caption {
+	font-weight: bold;
+	margin-bottom: 0.5em;
+	text-align: center;
+	caption-side: top;
+}
+
+.better-table th,
+.better-table td {
+	border: 1px solid var(--background-modifier-border);
+	padding: 0.5em;
+	text-align: left;
+	vertical-align: middle;
+	position: relative;
+}
+
+.better-table th {
+	background-color: var(--background-secondary);
+	font-weight: bold;
+}
+
+.better-table tr:hover {
+	background-color: var(--background-secondary-hover);
+}
+
+/* Alignment classes */
+.align-left {
+	text-align: left;
+}
+
+.align-center {
+	text-align: center;
+}
+
+.align-right {
+	text-align: right;
+}
+
+.align-top {
+	vertical-align: top;
+}
+
+.align-middle {
+	vertical-align: middle;
+}
+
+.align-bottom {
+	vertical-align: bottom;
+}
+
+/* Column resize handle */
+.column-resize-handle {
+	position: absolute;
+	right: -2px;
+	top: 0;
+	bottom: 0;
+	width: 4px;
+	background-color: var(--interactive-accent);
+	cursor: col-resize;
+	opacity: 0;
+	transition: opacity 0.2s;
+}
+
+.better-table th:hover .column-resize-handle {
+	opacity: 1;
+}
+
+/* Resizing state */
+.better-table.resizing {
+	cursor: col-resize;
+	user-select: none;
+}
+
+.better-table.resizing * {
+	cursor: col-resize;
+}
+
+/* Context menu */
+.table-context-menu {
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+	z-index: 1000;
+	min-width: 150px;
+}
+
+.table-context-menu-position {
+	position: fixed;
+	left: var(--menu-x);
+	top: var(--menu-y);
+}
+
+.table-context-menu-item {
+	padding: 8px 12px;
+	cursor: pointer;
+	transition: background-color 0.2s;
+}
+
+.table-context-menu-item:hover {
+	background-color: var(--background-secondary);
+}
+
+/* Formula cells */
+.formula-cell {
+	font-family: monospace;
+	background-color: var(--background-secondary);
+}
+
+.formula-result {
+	color: var(--text-success);
+	font-weight: bold;
+}
+
+.formula-error {
+	color: var(--text-error);
+	font-style: italic;
+}
+
+/* Multiline cells */
+.better-table td br {
+	margin: 0.2em 0;
+}
+
+/* Header column */
+.better-table th:first-child,
+.better-table td:first-child {
+	font-weight: bold;
+	background-color: var(--background-secondary);
+}
+
+/* Table selection */
+.better-table .selected {
+	background-color: var(--background-modifier-border);
+}
+
+/* Merged cells */
+.merged-cell-hidden {
+	display: none;
+}
+
+/* Table editing */
+.better-table td:focus,
+.better-table th:focus {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: -2px;
+}
+
+/* Responsive table */
+@media (max-width: 768px) {
+	.better-table {
+		display: block;
+		overflow-x: auto;
+	}
+}
+
+/* Print styles */
+@media print {
+	.better-table {
+		page-break-inside: avoid;
+	}
+	
+	.column-resize-handle {
+		display: none;
+	}
+}

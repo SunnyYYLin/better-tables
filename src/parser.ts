@@ -1,0 +1,123 @@
+import { TableData } from './types';
+
+export function parseMarkdownTable(content: string): TableData | null {
+	const lines = content.trim().split('\n');
+	if (lines.length < 2) return null;
+
+	const rows: string[][] = [];
+	let hasHeaderRow = false;
+	let hasHeaderColumn = false;
+	let caption: string | undefined;
+
+	// Check for caption (Table: prefix)
+	let startIndex = 0;
+	const firstLine = lines[0];
+	if (firstLine && firstLine.trim().startsWith('Table:')) {
+		caption = firstLine.trim().substring(6).trim();
+		startIndex = 1;
+		
+		// Skip empty lines after caption
+		while (startIndex < lines.length && lines[startIndex]?.trim() === '') {
+			startIndex++;
+		}
+	}
+
+	// Parse header row
+	const headerLine = lines[startIndex];
+	if (!headerLine) return null;
+	
+	const headerCells = parseTableRow(headerLine);
+	if (headerCells.length === 0) return null;
+
+	rows.push(headerCells);
+
+	// Check for separator row
+	const separatorIndex = startIndex + 1;
+	const separatorLine = lines[separatorIndex];
+	if (lines.length > separatorIndex && separatorLine && isSeparatorRow(separatorLine)) {
+		hasHeaderRow = true;
+		// Check if separator indicates header column
+		if (separatorLine.includes(':')) {
+			hasHeaderColumn = true;
+		}
+	}
+
+	// Parse data rows
+	const dataStartIndex = hasHeaderRow ? separatorIndex + 1 : separatorIndex;
+	for (let i = dataStartIndex; i < lines.length; i++) {
+		const line = lines[i];
+		if (line) {
+			const cells = parseTableRow(line);
+			if (cells.length > 0) {
+				rows.push(cells);
+			}
+		}
+	}
+
+	return {
+		rows,
+		hasHeaderRow,
+		hasHeaderColumn,
+		caption,
+	};
+}
+
+function parseTableRow(line: string): string[] {
+	const trimmed = line.trim();
+	if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) {
+		return [];
+	}
+
+	const cells = trimmed.slice(1, -1).split('|').map(cell => cell.trim());
+	return cells;
+}
+
+function isSeparatorRow(line: string): boolean {
+	const trimmed = line.trim();
+	if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) {
+		return false;
+	}
+
+	const content = trimmed.slice(1, -1);
+	const cells = content.split('|').map(cell => cell.trim());
+
+	return cells.every(cell => /^:?-+:?$/.test(cell));
+}
+
+export function markdownTableToString(table: TableData): string {
+	const lines: string[] = [];
+
+	// Add caption if present
+	if (table.caption) {
+		lines.push('Table: ' + table.caption);
+		lines.push('');
+	}
+
+	// Add header row
+	const firstRow = table.rows[0];
+	if (firstRow) {
+		lines.push('| ' + firstRow.join(' | ') + ' |');
+	}
+
+	// Add separator row
+	if (table.hasHeaderRow && firstRow) {
+		const separator = firstRow.map(() => {
+			if (table.hasHeaderColumn) {
+				return ':---:';
+			}
+			return '---';
+		});
+		lines.push('| ' + separator.join(' | ') + ' |');
+	}
+
+	// Add data rows
+	const startIndex = table.hasHeaderRow ? 1 : 0;
+	for (let i = startIndex; i < table.rows.length; i++) {
+		const row = table.rows[i];
+		if (row) {
+			lines.push('| ' + row.join(' | ') + ' |');
+		}
+	}
+
+	return lines.join('\n');
+}
