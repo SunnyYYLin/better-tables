@@ -17,7 +17,10 @@ import { TableStyler } from './styler';
 import { TableMenu } from './menu';
 import { getLocale, Locale } from './i18n';
 import { serializeTableToHtml, parseHtmlToTableData } from './html-serializer';
-import { replaceTableSource, readTableSource, isTableFromHtmlSource } from './source-editor';
+import {
+	replaceTableSource, readTableSource, isTableFromHtmlSource,
+	replaceTableInActiveFile, isTableHtmlInActiveFile, readTableSourceFromActiveFile,
+} from './source-editor';
 import { markdownTableToString } from './parser';
 
 export default class BetterTablesPlugin extends Plugin {
@@ -27,6 +30,7 @@ export default class BetterTablesPlugin extends Plugin {
 	private lastSelectedCell: HTMLElement | null = null;
 	private t!: Locale;
 	private tableContexts = new WeakMap<HTMLTableElement, MarkdownPostProcessorContext>();
+	private enhancedTables = new WeakSet<HTMLTableElement>();
 
 	async onload() {
 		await this.loadSettings();
@@ -37,9 +41,23 @@ export default class BetterTablesPlugin extends Plugin {
 		// Initialize renderer with settings
 		this.renderer = new TableRenderer(settingsToConfig(this.settings));
 
-		// Register markdown post processor for tables
+		// Register markdown post processor for tables (reading mode)
 		this.registerMarkdownPostProcessor((element: HTMLElement, context: MarkdownPostProcessorContext) => {
 			this.processTables(element, context);
+		});
+
+		// Global contextmenu handler for tables in live preview
+		this.registerDomEvent(document, 'contextmenu', (e: MouseEvent) => {
+			if (!this.settings.enableAdvancedTables) return;
+			const target = e.target as HTMLElement;
+			const tableEl = target.closest('table') as HTMLTableElement | null;
+			if (!tableEl) return;
+			// Skip tables already enhanced by the post-processor (reading mode)
+			if (this.enhancedTables.has(tableEl)) return;
+
+			e.preventDefault();
+			this.enhanceTableLivePreview(tableEl);
+			this.showTableMenu(tableEl, e);
 		});
 
 		// Add commands
@@ -93,9 +111,22 @@ export default class BetterTablesPlugin extends Plugin {
 		});
 	}
 
+	/**
+	 * Enhance a table in live preview mode (no MarkdownPostProcessorContext).
+	 * Adds resize handles, cell selection, and context menu.
+	 */
+	private enhanceTableLivePreview(tableEl: HTMLTableElement): void {
+		this.enhancedTables.add(tableEl);
+		tableEl.addClass('better-table');
+		this.addColumnResizeHandles(tableEl);
+		this.addTableContextMenu(tableEl);
+		this.addCellSelectionHandlers(tableEl);
+	}
+
 	private enhanceTable(tableEl: HTMLTableElement, context: MarkdownPostProcessorContext): void {
 		// Store context for source editing
 		this.tableContexts.set(tableEl, context);
+		this.enhancedTables.add(tableEl);
 
 		// Add CSS class for styling
 		tableEl.addClass('better-table');
@@ -273,7 +304,7 @@ export default class BetterTablesPlugin extends Plugin {
 
 	private showTableMenu(tableEl: HTMLTableElement, e: MouseEvent): void {
 		const t = this.t;
-		const isHtml = this.isTableHtml(tableEl);
+		const hasContext = this.tableContexts.has(tableEl);
 
 		const actions = [
 			{
@@ -295,16 +326,18 @@ export default class BetterTablesPlugin extends Plugin {
 			{ text: '---', action: () => {} },
 		];
 
-		if (!isHtml) {
-			actions.push({
-				text: t.convertToHtml,
-				action: () => this.convertTableToHtml(tableEl),
-			});
+		if (hasContext) {
+			// Reading mode: check synchronously via context
+			const isHtml = this.isTableHtml(tableEl);
+			if (!isHtml) {
+				actions.push({ text: t.convertToHtml, action: () => this.convertTableToHtml(tableEl) });
+			} else {
+				actions.push({ text: t.convertToMarkdown, action: () => this.convertTableToMarkdown(tableEl) });
+			}
 		} else {
-			actions.push({
-				text: t.convertToMarkdown,
-				action: () => this.convertTableToMarkdown(tableEl),
-			});
+			// Live preview: check asynchronously via file source
+			actions.push({ text: t.convertToHtml, action: () => this.convertTableToHtmlLive(tableEl) });
+			actions.push({ text: t.convertToMarkdown, action: () => this.convertTableToMarkdownLive(tableEl) });
 		}
 
 		TableMenu.show(tableEl, e, actions);
@@ -499,19 +532,21 @@ export default class BetterTablesPlugin extends Plugin {
 		return isTableFromHtmlSource(context, tableEl);
 	}
 
-	private convertTableToHtml(tableEl: HTMLTableElement): void {
+	// --- Reading mode (with context) ---
+
+	private async convertTableToHtml(tableEl: HTMLTableElement): Promise<void> {
 		const context = this.tableContexts.get(tableEl);
 		if (!context) return;
 
 		const html = serializeTableToHtml(tableEl);
-		const success = replaceTableSource(this.app, context, tableEl, html);
+		const success = await replaceTableSource(this.app, context, tableEl, html);
 
 		if (success) {
 			new Notice(this.t.tableConvertedToHtml);
 		}
 	}
 
-	private convertTableToMarkdown(tableEl: HTMLTableElement): void {
+	private async convertTableToMarkdown(tableEl: HTMLTableElement): Promise<void> {
 		const context = this.tableContexts.get(tableEl);
 		if (!context) return;
 
@@ -522,24 +557,61 @@ export default class BetterTablesPlugin extends Plugin {
 		if (!tableData) return;
 
 		const markdown = markdownTableToString(tableData);
-		const success = replaceTableSource(this.app, context, tableEl, markdown);
+		const success = await replaceTableSource(this.app, context, tableEl, markdown);
 
 		if (success) {
 			new Notice(this.t.tableConvertedToMarkdown);
 		}
 	}
 
-	private persistTableChanges(tableEl: HTMLTableElement): void {
-		const context = this.tableContexts.get(tableEl);
-		if (!context) return;
+	// --- Live preview (no context, use file API) ---
 
-		if (!isTableFromHtmlSource(context, tableEl)) {
-			new Notice(this.t.convertToHtmlForPersistence);
-			return;
-		}
-
+	private async convertTableToHtmlLive(tableEl: HTMLTableElement): Promise<void> {
 		const html = serializeTableToHtml(tableEl);
-		replaceTableSource(this.app, context, tableEl, html);
+		const success = await replaceTableInActiveFile(this.app, tableEl, html);
+
+		if (success) {
+			new Notice(this.t.tableConvertedToHtml);
+		}
+	}
+
+	private async convertTableToMarkdownLive(tableEl: HTMLTableElement): Promise<void> {
+		const sourceHtml = await readTableSourceFromActiveFile(this.app, tableEl);
+		if (!sourceHtml) return;
+
+		const tableData = parseHtmlToTableData(sourceHtml);
+		if (!tableData) return;
+
+		const markdown = markdownTableToString(tableData);
+		const success = await replaceTableInActiveFile(this.app, tableEl, markdown);
+
+		if (success) {
+			new Notice(this.t.tableConvertedToMarkdown);
+		}
+	}
+
+	// --- Persistence (auto-detect mode) ---
+
+	private async persistTableChanges(tableEl: HTMLTableElement): Promise<void> {
+		const context = this.tableContexts.get(tableEl);
+		const html = serializeTableToHtml(tableEl);
+
+		if (context) {
+			// Reading mode
+			if (!isTableFromHtmlSource(context, tableEl)) {
+				new Notice(this.t.convertToHtmlForPersistence);
+				return;
+			}
+			await replaceTableSource(this.app, context, tableEl, html);
+		} else {
+			// Live preview
+			const isHtml = await isTableHtmlInActiveFile(this.app, tableEl);
+			if (!isHtml) {
+				new Notice(this.t.convertToHtmlForPersistence);
+				return;
+			}
+			await replaceTableInActiveFile(this.app, tableEl, html);
+		}
 	}
 
 	private toggleHeaderRow(editor: Editor): void {
