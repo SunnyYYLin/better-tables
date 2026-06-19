@@ -16,6 +16,9 @@ import { TableRenderer } from './renderer';
 import { TableStyler } from './styler';
 import { TableMenu } from './menu';
 import { getLocale, Locale } from './i18n';
+import { serializeTableToHtml, parseHtmlToTableData } from './html-serializer';
+import { replaceTableSource, readTableSource, isTableFromHtmlSource } from './source-editor';
+import { markdownTableToString } from './parser';
 
 export default class BetterTablesPlugin extends Plugin {
 	settings!: BetterTablesSettings;
@@ -23,6 +26,7 @@ export default class BetterTablesPlugin extends Plugin {
 	private selectedCells: HTMLElement[] = [];
 	private lastSelectedCell: HTMLElement | null = null;
 	private t!: Locale;
+	private tableContexts = new WeakMap<HTMLTableElement, MarkdownPostProcessorContext>();
 
 	async onload() {
 		await this.loadSettings();
@@ -90,6 +94,9 @@ export default class BetterTablesPlugin extends Plugin {
 	}
 
 	private enhanceTable(tableEl: HTMLTableElement, context: MarkdownPostProcessorContext): void {
+		// Store context for source editing
+		this.tableContexts.set(tableEl, context);
+
 		// Add CSS class for styling
 		tableEl.addClass('better-table');
 
@@ -266,14 +273,16 @@ export default class BetterTablesPlugin extends Plugin {
 
 	private showTableMenu(tableEl: HTMLTableElement, e: MouseEvent): void {
 		const t = this.t;
+		const isHtml = this.isTableHtml(tableEl);
+
 		const actions = [
-			{ 
-				text: t.mergeCells, 
+			{
+				text: t.mergeCells,
 				action: () => this.mergeSelectedCells(tableEl),
 				disabled: this.selectedCells.length < 2
 			},
-			{ 
-				text: t.unmergeCells, 
+			{
+				text: t.unmergeCells,
 				action: () => this.unmergeCells(tableEl, e),
 			},
 			{ text: '---', action: () => {} },
@@ -283,7 +292,20 @@ export default class BetterTablesPlugin extends Plugin {
 			{ text: t.addCaption, action: () => this.addTableCaptionFromTable(tableEl) },
 			{ text: t.autoFitColumns, action: () => TableStyler.autoFitColumns(tableEl) },
 			{ text: t.equalColumnWidth, action: () => TableStyler.equalizeColumns(tableEl) },
+			{ text: '---', action: () => {} },
 		];
+
+		if (!isHtml) {
+			actions.push({
+				text: t.convertToHtml,
+				action: () => this.convertTableToHtml(tableEl),
+			});
+		} else {
+			actions.push({
+				text: t.convertToMarkdown,
+				action: () => this.convertTableToMarkdown(tableEl),
+			});
+		}
 
 		TableMenu.show(tableEl, e, actions);
 	}
@@ -343,8 +365,9 @@ export default class BetterTablesPlugin extends Plugin {
 
 		// Clear selection
 		this.clearCellSelection(tableEl);
-		
+
 		new Notice(this.t.cellsMerged);
+		this.persistTableChanges(tableEl);
 	}
 
 	private unmergeCells(tableEl: HTMLTableElement, e: MouseEvent): void {
@@ -390,6 +413,7 @@ export default class BetterTablesPlugin extends Plugin {
 		}
 
 		new Notice(this.t.cellsUnmerged);
+		this.persistTableChanges(tableEl);
 	}
 
 	private toggleHeaderRowFromTable(tableEl: HTMLTableElement): void {
@@ -410,6 +434,7 @@ export default class BetterTablesPlugin extends Plugin {
 		});
 
 		new Notice(isHeader ? this.t.headerRowRemoved : this.t.headerRowAdded);
+		this.persistTableChanges(tableEl);
 	}
 
 	private toggleHeaderColumnFromTable(tableEl: HTMLTableElement): void {
@@ -429,6 +454,7 @@ export default class BetterTablesPlugin extends Plugin {
 		});
 
 		new Notice(this.t.headerColumnToggled);
+		this.persistTableChanges(tableEl);
 	}
 
 	private addTableCaptionFromTable(tableEl: HTMLTableElement): void {
@@ -445,6 +471,7 @@ export default class BetterTablesPlugin extends Plugin {
 			const captionEl = tableEl.createEl('caption');
 			captionEl.textContent = caption;
 			new Notice(this.t.captionAdded);
+			this.persistTableChanges(tableEl);
 		});
 		modal.open();
 	}
@@ -464,6 +491,55 @@ export default class BetterTablesPlugin extends Plugin {
 				}
 			}
 		}
+	}
+
+	private isTableHtml(tableEl: HTMLTableElement): boolean {
+		const context = this.tableContexts.get(tableEl);
+		if (!context) return false;
+		return isTableFromHtmlSource(context, tableEl);
+	}
+
+	private convertTableToHtml(tableEl: HTMLTableElement): void {
+		const context = this.tableContexts.get(tableEl);
+		if (!context) return;
+
+		const html = serializeTableToHtml(tableEl);
+		const success = replaceTableSource(this.app, context, tableEl, html);
+
+		if (success) {
+			new Notice(this.t.tableConvertedToHtml);
+		}
+	}
+
+	private convertTableToMarkdown(tableEl: HTMLTableElement): void {
+		const context = this.tableContexts.get(tableEl);
+		if (!context) return;
+
+		const sourceHtml = readTableSource(this.app, context, tableEl);
+		if (!sourceHtml) return;
+
+		const tableData = parseHtmlToTableData(sourceHtml);
+		if (!tableData) return;
+
+		const markdown = markdownTableToString(tableData);
+		const success = replaceTableSource(this.app, context, tableEl, markdown);
+
+		if (success) {
+			new Notice(this.t.tableConvertedToMarkdown);
+		}
+	}
+
+	private persistTableChanges(tableEl: HTMLTableElement): void {
+		const context = this.tableContexts.get(tableEl);
+		if (!context) return;
+
+		if (!isTableFromHtmlSource(context, tableEl)) {
+			new Notice(this.t.convertToHtmlForPersistence);
+			return;
+		}
+
+		const html = serializeTableToHtml(tableEl);
+		replaceTableSource(this.app, context, tableEl, html);
 	}
 
 	private toggleHeaderRow(editor: Editor): void {

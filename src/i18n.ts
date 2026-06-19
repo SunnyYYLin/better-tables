@@ -29,6 +29,13 @@ export interface Locale {
 	cancel: string;
 	addCaptionButton: string;
 
+	// Conversion
+	convertToHtml: string;
+	convertToMarkdown: string;
+	tableConvertedToHtml: string;
+	tableConvertedToMarkdown: string;
+	convertToHtmlForPersistence: string;
+
 	// Settings
 	featuresHeading: string;
 	enableAdvancedTables: string;
@@ -89,6 +96,13 @@ export const locales: Record<string, Locale> = {
 		cancel: 'Cancel',
 		addCaptionButton: 'Add caption',
 
+		// Conversion
+		convertToHtml: 'Convert to HTML',
+		convertToMarkdown: 'Convert to Markdown',
+		tableConvertedToHtml: 'Table converted to HTML',
+		tableConvertedToMarkdown: 'Table converted to Markdown (merges lost)',
+		convertToHtmlForPersistence: 'Convert to HTML to persist changes',
+
 		// Settings
 		featuresHeading: 'Features',
 		enableAdvancedTables: 'Enable advanced tables',
@@ -147,6 +161,13 @@ export const locales: Record<string, Locale> = {
 		tableCaption: '表标题',
 		cancel: '取消',
 		addCaptionButton: '添加标题',
+
+		// Conversion
+		convertToHtml: '转换为 HTML',
+		convertToMarkdown: '转换为 Markdown',
+		tableConvertedToHtml: '表格已转换为 HTML',
+		tableConvertedToMarkdown: '表格已转换为 Markdown（合并将丢失）',
+		convertToHtmlForPersistence: '转换为 HTML 以持久保存更改',
 
 		// Settings
 		featuresHeading: '功能',
