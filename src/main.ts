@@ -134,9 +134,6 @@ export default class BetterTablesPlugin extends Plugin {
 		// Add drag handles for column resizing
 		this.addColumnResizeHandles(tableEl);
 
-		// Add context menu for table operations
-		this.addTableContextMenu(tableEl);
-
 		// Add cell click handlers for selection
 		this.addCellSelectionHandlers(tableEl);
 
