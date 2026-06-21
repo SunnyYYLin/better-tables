@@ -31,6 +31,7 @@ export default class BetterTablesPlugin extends Plugin {
 	private t!: Locale;
 	private tableContexts = new WeakMap<HTMLTableElement, MarkdownPostProcessorContext>();
 	private enhancedTables = new WeakSet<HTMLTableElement>();
+	private lastRightClickedTable: HTMLTableElement | null = null;
 
 	async onload() {
 		await this.loadSettings();
@@ -46,19 +47,70 @@ export default class BetterTablesPlugin extends Plugin {
 			this.processTables(element, context);
 		});
 
-		// Global contextmenu handler for tables in live preview
+		// Capture-phase listener to record the right-clicked table element
 		this.registerDomEvent(document, 'contextmenu', (e: MouseEvent) => {
-			if (!this.settings.enableAdvancedTables) return;
 			const target = e.target as HTMLElement;
-			const tableEl = target.closest('table') as HTMLTableElement | null;
-			if (!tableEl) return;
-			// Skip tables already enhanced by the post-processor (reading mode)
-			if (this.enhancedTables.has(tableEl)) return;
+			this.lastRightClickedTable = target.closest('table') as HTMLTableElement | null;
+		}, true);
 
-			e.preventDefault();
-			this.enhanceTableLivePreview(tableEl);
-			this.showTableMenu(tableEl, e);
-		});
+		// Inject table actions into the editor's native context menu (live preview)
+		this.registerEvent(
+			this.app.workspace.on('editor-menu', (menu, editor, view) => {
+				if (!this.settings.enableAdvancedTables) return;
+				const tableEl = this.lastRightClickedTable;
+				if (!tableEl) return;
+				// Reading-mode tables are handled by their own per-table listener
+				if (this.tableContexts.has(tableEl)) return;
+
+				// Enhance table on first right-click
+				if (!this.enhancedTables.has(tableEl)) {
+					this.enhanceTableLivePreview(tableEl);
+				}
+
+				const t = this.t;
+				menu.addSeparator();
+				menu.addItem((item) =>
+					item.setTitle(t.mergeCells)
+						.setDisabled(this.selectedCells.length < 2)
+						.onClick(() => this.mergeSelectedCells(tableEl))
+				);
+				menu.addItem((item) =>
+					item.setTitle(t.unmergeCells)
+						.onClick(() => this.unmergeCells(tableEl))
+				);
+				menu.addSeparator();
+				menu.addItem((item) =>
+					item.setTitle(t.toggleHeaderRow)
+						.onClick(() => this.toggleHeaderRowFromTable(tableEl))
+				);
+				menu.addItem((item) =>
+					item.setTitle(t.toggleHeaderColumn)
+						.onClick(() => this.toggleHeaderColumnFromTable(tableEl))
+				);
+				menu.addSeparator();
+				menu.addItem((item) =>
+					item.setTitle(t.addCaption)
+						.onClick(() => this.addTableCaptionFromTable(tableEl))
+				);
+				menu.addItem((item) =>
+					item.setTitle(t.autoFitColumns)
+						.onClick(() => TableStyler.autoFitColumns(tableEl))
+				);
+				menu.addItem((item) =>
+					item.setTitle(t.equalColumnWidth)
+						.onClick(() => TableStyler.equalizeColumns(tableEl))
+				);
+				menu.addSeparator();
+				menu.addItem((item) =>
+					item.setTitle(t.convertToHtml)
+						.onClick(() => this.convertTableToHtmlLive(tableEl))
+				);
+				menu.addItem((item) =>
+					item.setTitle(t.convertToMarkdown)
+						.onClick(() => this.convertTableToMarkdownLive(tableEl))
+				);
+			})
+		);
 
 		// Add commands
 		this.addCommand({
@@ -119,7 +171,6 @@ export default class BetterTablesPlugin extends Plugin {
 		this.enhancedTables.add(tableEl);
 		tableEl.addClass('better-table');
 		this.addColumnResizeHandles(tableEl);
-		this.addTableContextMenu(tableEl);
 		this.addCellSelectionHandlers(tableEl);
 	}
 
@@ -290,15 +341,6 @@ export default class BetterTablesPlugin extends Plugin {
 		return { row: rowIndex, col: colIndex };
 	}
 
-	private addTableContextMenu(tableEl: HTMLTableElement): void {
-		tableEl.addEventListener('contextmenu', (e: Event) => {
-			const mouseEvent = e as MouseEvent;
-			mouseEvent.preventDefault();
-			mouseEvent.stopPropagation();
-			this.showTableMenu(tableEl, mouseEvent);
-		}, true); // Use capture phase to ensure we get the event first
-	}
-
 	private showTableMenu(tableEl: HTMLTableElement, e: MouseEvent): void {
 		const t = this.t;
 		const hasContext = this.tableContexts.has(tableEl);
@@ -311,7 +353,7 @@ export default class BetterTablesPlugin extends Plugin {
 			},
 			{
 				text: t.unmergeCells,
-				action: () => this.unmergeCells(tableEl, e),
+				action: () => this.unmergeCells(tableEl),
 			},
 			{ text: '---', action: () => {} },
 			{ text: t.toggleHeaderRow, action: () => this.toggleHeaderRowFromTable(tableEl) },
@@ -400,31 +442,26 @@ export default class BetterTablesPlugin extends Plugin {
 		this.persistTableChanges(tableEl);
 	}
 
-	private unmergeCells(tableEl: HTMLTableElement, e: MouseEvent): void {
-		// Find the cell under cursor
-		const target = e.target as HTMLElement;
-		const cell = target.closest('td, th') as HTMLElement;
-		
-		if (!cell) {
-			new Notice(this.t.clickMergedCellToUnmerge);
-			return;
-		}
+	private unmergeCells(tableEl: HTMLTableElement): void {
+		// Find a merged cell in the table
+		const mergedCell = tableEl.querySelector(
+			'td[rowspan], td[colspan], th[rowspan], th[colspan]'
+		) as HTMLElement | null;
 
-		// Check if cell has rowspan or colspan
-		const rowSpan = parseInt(cell.getAttribute('rowspan') || '1');
-		const colSpan = parseInt(cell.getAttribute('colspan') || '1');
-
-		if (rowSpan === 1 && colSpan === 1) {
+		if (!mergedCell) {
 			new Notice(this.t.cellNotMerged);
 			return;
 		}
 
+		const rowSpan = parseInt(mergedCell.getAttribute('rowspan') || '1');
+		const colSpan = parseInt(mergedCell.getAttribute('colspan') || '1');
+
 		// Remove spans
-		cell.removeAttribute('rowspan');
-		cell.removeAttribute('colspan');
+		mergedCell.removeAttribute('rowspan');
+		mergedCell.removeAttribute('colspan');
 
 		// Show hidden cells in the merge range
-		const pos = this.getCellPosition(cell);
+		const pos = this.getCellPosition(mergedCell);
 		if (!pos) return;
 
 		const rows = tableEl.querySelectorAll('tr');
