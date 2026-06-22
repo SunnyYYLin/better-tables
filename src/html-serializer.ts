@@ -89,6 +89,27 @@ export function parseHtmlToTableData(html: string): TableData | null {
 	return { rows, hasHeaderRow, hasHeaderColumn, caption };
 }
 
+export function tableDataToHtml(table: TableData): string {
+	const tableEl = activeDocument.createElement('table');
+
+	if (table.caption) {
+		const captionEl = tableEl.createEl('caption');
+		captionEl.textContent = table.caption;
+	}
+
+	const tbody = tableEl.createEl('tbody');
+	table.rows.forEach((row, rowIndex) => {
+		const tr = tbody.createEl('tr');
+		row.forEach((cell, colIndex) => {
+			const isHeader = (table.hasHeaderRow && rowIndex === 0) || (table.hasHeaderColumn && colIndex === 0);
+			const cellEl = tr.createEl(isHeader ? 'th' : 'td');
+			cellEl.textContent = cell;
+		});
+	});
+
+	return prettyPrintHtml(tableEl.outerHTML);
+}
+
 /**
  * Check if section text represents an HTML table (vs Markdown table).
  */

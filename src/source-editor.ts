@@ -78,7 +78,7 @@ export function isTableFromHtmlSource(
 
 // --- Table block detection in source ---
 
-interface TableBlock {
+export interface TableBlock {
 	start: number; // first line of table (inclusive)
 	end: number;   // last line of table (inclusive)
 	kind: 'markdown' | 'html';
@@ -89,7 +89,7 @@ interface TableBlock {
  * A table block is a contiguous sequence of lines starting with '|'.
  * Also includes a following separator line if present.
  */
-function findAllTableBlocks(lines: string[]): TableBlock[] {
+export function findAllTableBlocks(lines: string[]): TableBlock[] {
 	const blocks: TableBlock[] = [];
 	let i = 0;
 	while (i < lines.length) {
@@ -115,6 +115,29 @@ function findAllTableBlocks(lines: string[]): TableBlock[] {
 		}
 	}
 	return blocks;
+}
+
+export function findTableAtLine(sourceLines: string[], line: number): TableBlock | null {
+	const blocks = findAllTableBlocks(sourceLines);
+	return blocks.find(block => line >= block.start && line <= block.end) ?? null;
+}
+
+export function findTableNearEditorSelection(editor: Editor): TableBlock | null {
+	const lines = editor.getValue().split('\n');
+	const from = editor.getCursor('from');
+	const to = editor.getCursor('to');
+	const startLine = Math.min(from.line, to.line);
+	const endLine = Math.max(from.line, to.line);
+
+	for (let line = startLine; line <= endLine; line++) {
+		const block = findTableAtLine(lines, line);
+		if (block) return block;
+	}
+
+	const cursorBlock = findTableAtLine(lines, editor.getCursor().line);
+	if (cursorBlock) return cursorBlock;
+
+	return null;
 }
 
 /**
@@ -198,9 +221,18 @@ export function replaceTableInEditor(
 ): boolean {
 	const sourceText = editor.getValue();
 	const lines = sourceText.split('\n');
-	const range = findTableInSource(lines, tableEl);
+	const range = findTableNearEditorSelection(editor) ?? findTableInSource(lines, tableEl);
 	if (!range) return false;
 
+	return replaceTableRangeInEditor(editor, range, newContent);
+}
+
+export function replaceTableRangeInEditor(
+	editor: Editor,
+	range: TableBlock,
+	newContent: string,
+): boolean {
+	const lines = editor.getValue().split('\n');
 	const from = { line: range.start, ch: 0 };
 	const to = { line: range.end, ch: lines[range.end]!.length };
 	editor.replaceRange(newContent, from, to);
@@ -216,7 +248,7 @@ export function readTableSourceFromEditor(
 ): string | null {
 	const sourceText = editor.getValue();
 	const lines = sourceText.split('\n');
-	const range = findTableInSource(lines, tableEl);
+	const range = findTableNearEditorSelection(editor) ?? findTableInSource(lines, tableEl);
 	if (!range) return null;
 	return lines.slice(range.start, range.end + 1).join('\n');
 }
@@ -230,7 +262,7 @@ export function isTableHtmlInEditor(
 ): boolean {
 	const sourceText = editor.getValue();
 	const lines = sourceText.split('\n');
-	const range = findTableInSource(lines, tableEl);
+	const range = findTableNearEditorSelection(editor) ?? findTableInSource(lines, tableEl);
 	if (!range) return false;
 	return range.kind === 'html' || isHtmlInSection(lines.slice(range.start, range.end + 1).join('\n'));
 }

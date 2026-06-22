@@ -16,13 +16,13 @@ import { TableRenderer } from './renderer';
 import { TableStyler } from './styler';
 import { TableMenu } from './menu';
 import { getLocale, Locale } from './i18n';
-import { serializeTableToHtml, parseHtmlToTableData } from './html-serializer';
+import { serializeTableToHtml, parseHtmlToTableData, tableDataToHtml } from './html-serializer';
 import {
 	replaceTableSource, readTableSource, isTableFromHtmlSource,
 	replaceTableInEditor, readTableSourceFromEditor, isTableHtmlInEditor,
-	findTableInSource,
+	findTableInSource, findTableNearEditorSelection, replaceTableRangeInEditor,
 } from './source-editor';
-import { markdownTableToString } from './parser';
+import { markdownTableToString, parseMarkdownTable } from './parser';
 
 export default class BetterTablesPlugin extends Plugin {
 	settings!: BetterTablesSettings;
@@ -54,8 +54,11 @@ export default class BetterTablesPlugin extends Plugin {
 		// Must use addEventListener directly (not registerDomEvent) for capture phase.
 		this.contextmenuHandler = (e: MouseEvent) => {
 			const target = e.target as HTMLElement;
-			this.lastRightClickedTable = target.closest('table');
+			this.lastRightClickedTable = target.closest('table') ?? this.getTableFromNativeSelection();
 			this.lastRightClickedCell = target.closest('td, th');
+			if (this.lastRightClickedTable) {
+				this.syncNativeSelectedCells(this.lastRightClickedTable);
+			}
 		};
 		activeDocument.addEventListener('contextmenu', this.contextmenuHandler, true);
 
@@ -64,12 +67,13 @@ export default class BetterTablesPlugin extends Plugin {
 			this.app.workspace.on('editor-menu', (menu, editor, view) => {
 				if (!this.settings.enableAdvancedTables) return;
 				const tableEl = this.lastRightClickedTable;
-				if (!tableEl) return;
+				const sourceRange = findTableNearEditorSelection(editor);
+				if (!tableEl && !sourceRange) return;
 				// Reading-mode tables are handled by their own per-table listener
-				if (this.tableContexts.has(tableEl)) return;
+				if (tableEl && this.tableContexts.has(tableEl)) return;
 
 				// Enhance table on first right-click
-				if (!this.enhancedTables.has(tableEl)) {
+				if (tableEl && !this.enhancedTables.has(tableEl)) {
 					this.enhanceTableLivePreview(tableEl);
 				}
 
@@ -77,37 +81,49 @@ export default class BetterTablesPlugin extends Plugin {
 				menu.addSeparator();
 				menu.addItem((item) =>
 					item.setTitle(t.mergeCells)
-						.setDisabled(this.selectedCells.length < 2)
-						.onClick(() => this.mergeSelectedCells(tableEl, editor))
+						.setDisabled(!tableEl || this.selectedCells.length < 2)
+						.onClick(() => {
+							if (tableEl) this.mergeSelectedCells(tableEl, editor);
+						})
 				);
 				menu.addItem((item) =>
 					item.setTitle(t.unmergeCells)
-						.onClick(() => this.unmergeCells(tableEl, editor))
+						.setDisabled(!tableEl)
+						.onClick(() => {
+							if (tableEl) this.unmergeCells(tableEl, editor);
+						})
 				);
 				menu.addSeparator();
 				menu.addItem((item) =>
 					item.setTitle(t.toggleHeaderRow)
-						.onClick(() => this.toggleHeaderRowInSource(editor, tableEl))
+						.onClick(() => this.toggleHeaderRowInSource(editor, tableEl ?? undefined))
 				);
 				menu.addItem((item) =>
 					item.setTitle(t.toggleHeaderColumn)
-						.onClick(() => this.toggleHeaderColumnInSource(editor, tableEl))
+						.setDisabled(!tableEl)
+						.onClick(() => {
+							if (tableEl) this.toggleHeaderColumnInSource(editor, tableEl);
+						})
 				);
 				menu.addSeparator();
 				menu.addItem((item) =>
 					item.setTitle(t.addCaption)
-						.onClick(() => this.addCaptionInSource(editor, tableEl))
+						.onClick(() => this.addCaptionInSource(editor, tableEl ?? undefined))
 				);
 				menu.addItem((item) =>
 					item.setTitle(t.autoFitColumns)
+						.setDisabled(!tableEl)
 						.onClick(() => {
+							if (!tableEl) return;
 							TableStyler.autoFitColumns(tableEl);
 							this.persistTableChanges(tableEl, editor);
 						})
 				);
 				menu.addItem((item) =>
 					item.setTitle(t.equalColumnWidth)
+						.setDisabled(!tableEl)
 						.onClick(() => {
+							if (!tableEl) return;
 							TableStyler.equalizeColumns(tableEl);
 							this.persistTableChanges(tableEl, editor);
 						})
@@ -115,36 +131,54 @@ export default class BetterTablesPlugin extends Plugin {
 				menu.addSeparator();
 				menu.addItem((item) =>
 					item.setTitle(t.left)
-						.onClick(() => this.applyAlignment(tableEl, editor, 'horizontal', 'left'))
+						.setDisabled(!tableEl)
+						.onClick(() => {
+							if (tableEl) this.applyAlignment(tableEl, editor, 'horizontal', 'left');
+						})
 				);
 				menu.addItem((item) =>
 					item.setTitle(t.center)
-						.onClick(() => this.applyAlignment(tableEl, editor, 'horizontal', 'center'))
+						.setDisabled(!tableEl)
+						.onClick(() => {
+							if (tableEl) this.applyAlignment(tableEl, editor, 'horizontal', 'center');
+						})
 				);
 				menu.addItem((item) =>
 					item.setTitle(t.right)
-						.onClick(() => this.applyAlignment(tableEl, editor, 'horizontal', 'right'))
+						.setDisabled(!tableEl)
+						.onClick(() => {
+							if (tableEl) this.applyAlignment(tableEl, editor, 'horizontal', 'right');
+						})
 				);
 				menu.addItem((item) =>
 					item.setTitle(t.top)
-						.onClick(() => this.applyAlignment(tableEl, editor, 'vertical', 'top'))
+						.setDisabled(!tableEl)
+						.onClick(() => {
+							if (tableEl) this.applyAlignment(tableEl, editor, 'vertical', 'top');
+						})
 				);
 				menu.addItem((item) =>
 					item.setTitle(t.middle)
-						.onClick(() => this.applyAlignment(tableEl, editor, 'vertical', 'middle'))
+						.setDisabled(!tableEl)
+						.onClick(() => {
+							if (tableEl) this.applyAlignment(tableEl, editor, 'vertical', 'middle');
+						})
 				);
 				menu.addItem((item) =>
 					item.setTitle(t.bottom)
-						.onClick(() => this.applyAlignment(tableEl, editor, 'vertical', 'bottom'))
+						.setDisabled(!tableEl)
+						.onClick(() => {
+							if (tableEl) this.applyAlignment(tableEl, editor, 'vertical', 'bottom');
+						})
 				);
 				menu.addSeparator();
 				menu.addItem((item) =>
 					item.setTitle(t.convertToHtml)
-						.onClick(() => this.convertTableToHtmlLive(tableEl, editor))
+						.onClick(() => this.convertTableToHtmlLive(editor, tableEl ?? undefined))
 				);
 				menu.addItem((item) =>
 					item.setTitle(t.convertToMarkdown)
-						.onClick(() => this.convertTableToMarkdownLive(tableEl, editor))
+						.onClick(() => this.convertTableToMarkdownLive(editor, tableEl ?? undefined))
 				);
 			})
 		);
@@ -241,6 +275,7 @@ export default class BetterTablesPlugin extends Plugin {
 			e.preventDefault();
 			this.lastRightClickedTable = tableEl;
 			this.lastRightClickedCell = (e.target as HTMLElement).closest('td, th');
+			this.syncNativeSelectedCells(tableEl);
 			TableMenu.show(tableEl, e, this.getReadingModeActions(tableEl));
 		});
 	}
@@ -397,6 +432,41 @@ export default class BetterTablesPlugin extends Plugin {
 		return { row: rowIndex, col: colIndex };
 	}
 
+	private getTableFromNativeSelection(): HTMLTableElement | null {
+		const selection = activeWindow.getSelection();
+		if (!selection || selection.rangeCount === 0) return null;
+
+		for (let i = 0; i < selection.rangeCount; i++) {
+			const range = selection.getRangeAt(i);
+			const container = range.commonAncestorContainer;
+			const element = container.nodeType === Node.ELEMENT_NODE
+				? container as Element
+				: container.parentElement;
+			const table = element?.closest('table');
+			if (table) return table;
+		}
+
+		return null;
+	}
+
+	private syncNativeSelectedCells(tableEl: HTMLTableElement): void {
+		const selection = activeWindow.getSelection();
+		if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return;
+
+		const selectedCells = Array.from(tableEl.querySelectorAll<HTMLElement>('td, th'))
+			.filter(cell => {
+				for (let i = 0; i < selection.rangeCount; i++) {
+					if (selection.getRangeAt(i).intersectsNode(cell)) return true;
+				}
+				return false;
+			});
+
+		if (selectedCells.length < 2) return;
+		this.clearCellSelection(tableEl);
+		selectedCells.forEach(cell => this.selectCell(cell));
+		this.lastSelectedCell = selectedCells[selectedCells.length - 1] ?? null;
+	}
+
 	private enhanceRenderedContent(tableEl: HTMLTableElement): void {
 		tableEl.querySelectorAll('td, th').forEach((cell) => {
 			const cellEl = cell as HTMLElement;
@@ -475,11 +545,15 @@ export default class BetterTablesPlugin extends Plugin {
 	 * In markdown, the header row is defined by the separator line (| --- | --- |).
 	 * If separator exists, remove it (header → data). If not, add it (data → header).
 	 */
-	private toggleHeaderRowInSource(editor: Editor, tableEl: HTMLTableElement): void {
+	private toggleHeaderRowInSource(editor: Editor, tableEl?: HTMLTableElement): void {
 		const sourceText = editor.getValue();
 		const lines = sourceText.split('\n');
-		const range = findTableInSource(lines, tableEl);
+		const range = findTableNearEditorSelection(editor) ?? (tableEl ? findTableInSource(lines, tableEl) : null);
 		if (!range) return;
+		if (range.kind === 'html') {
+			new Notice(this.t.convertToMarkdown);
+			return;
+		}
 
 		const secondLine = lines[range.start + 1]?.trim() ?? '';
 		const isSeparator = this.isMarkdownSeparator(secondLine);
@@ -541,9 +615,9 @@ export default class BetterTablesPlugin extends Plugin {
 	/**
 	 * Add a caption before a table by inserting a line in the source.
 	 */
-	private addCaptionInSource(editor: Editor, tableEl: HTMLTableElement): void {
+	private addCaptionInSource(editor: Editor, tableEl?: HTMLTableElement): void {
 		// Check if caption already exists
-		const existingCaption = tableEl.querySelector('caption');
+		const existingCaption = tableEl?.querySelector('caption');
 		if (existingCaption) {
 			new Notice(this.t.tableAlreadyHasCaption);
 			return;
@@ -554,7 +628,7 @@ export default class BetterTablesPlugin extends Plugin {
 
 			const sourceText = editor.getValue();
 			const lines = sourceText.split('\n');
-			const range = findTableInSource(lines, tableEl);
+			const range = findTableNearEditorSelection(editor) ?? (tableEl ? findTableInSource(lines, tableEl) : null);
 			if (!range) return;
 
 			// Insert caption line before the table
@@ -765,9 +839,27 @@ export default class BetterTablesPlugin extends Plugin {
 
 	// --- Conversion (live preview, via Editor API) ---
 
-	private convertTableToHtmlLive(tableEl: HTMLTableElement, editor: Editor): void {
-		const html = serializeTableToHtml(tableEl);
-		const success = replaceTableInEditor(editor, tableEl, html);
+	private convertTableToHtmlLive(editor: Editor, tableEl?: HTMLTableElement): void {
+		const sourceText = editor.getValue();
+		const lines = sourceText.split('\n');
+		const range = findTableNearEditorSelection(editor) ?? (tableEl ? findTableInSource(lines, tableEl) : null);
+		if (!range) {
+			new Notice('Failed to find table in source');
+			return;
+		}
+
+		const source = lines.slice(range.start, range.end + 1).join('\n');
+		const tableData = range.kind === 'markdown' ? parseMarkdownTable(source) : null;
+		if (!tableEl && range.kind === 'markdown' && !tableData) {
+			new Notice('Failed to parse table');
+			return;
+		}
+		const html = tableEl
+			? serializeTableToHtml(tableEl)
+			: range.kind === 'html'
+				? source
+				: tableDataToHtml(tableData!);
+		const success = replaceTableRangeInEditor(editor, range, html);
 
 		if (success) {
 			new Notice(this.t.tableConvertedToHtml);
@@ -776,8 +868,15 @@ export default class BetterTablesPlugin extends Plugin {
 		}
 	}
 
-	private convertTableToMarkdownLive(tableEl: HTMLTableElement, editor: Editor): void {
-		const sourceHtml = readTableSourceFromEditor(editor, tableEl);
+	private convertTableToMarkdownLive(editor: Editor, tableEl?: HTMLTableElement): void {
+		const sourceText = editor.getValue();
+		const lines = sourceText.split('\n');
+		const range = findTableNearEditorSelection(editor) ?? (tableEl ? findTableInSource(lines, tableEl) : null);
+		const sourceHtml = range
+			? lines.slice(range.start, range.end + 1).join('\n')
+			: tableEl
+				? readTableSourceFromEditor(editor, tableEl)
+				: null;
 		if (!sourceHtml) {
 			new Notice('Failed to find table in source');
 			return;
@@ -790,7 +889,11 @@ export default class BetterTablesPlugin extends Plugin {
 		}
 
 		const markdown = markdownTableToString(tableData);
-		const success = replaceTableInEditor(editor, tableEl, markdown);
+		const success = range
+			? replaceTableRangeInEditor(editor, range, markdown)
+			: tableEl
+				? replaceTableInEditor(editor, tableEl, markdown)
+				: false;
 
 		if (success) {
 			new Notice(this.t.tableConvertedToMarkdown);
