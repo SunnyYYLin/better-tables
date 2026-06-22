@@ -6,6 +6,7 @@ import { TableData } from './types';
  */
 export function serializeTableToHtml(tableEl: HTMLTableElement): string {
 	const cleanTable = activeDocument.createElement('table');
+	copyTableAttributes(tableEl, cleanTable);
 	const caption = tableEl.querySelector(':scope > caption');
 	if (caption?.textContent?.trim()) {
 		const cleanCaption = cleanTable.createEl('caption');
@@ -26,6 +27,13 @@ export function serializeTableToHtml(tableEl: HTMLTableElement): string {
 	}
 
 	return prettyPrintHtml(cleanTable.outerHTML);
+}
+
+function copyTableAttributes(source: HTMLTableElement, target: HTMLTableElement): void {
+	const width = source.style.width || '';
+	const styles: string[] = [];
+	if (width) styles.push(`width: ${width}`);
+	if (styles.length > 0) target.setAttribute('style', styles.join('; '));
 }
 
 /**

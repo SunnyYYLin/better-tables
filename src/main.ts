@@ -6,6 +6,7 @@ import {
 	App,
 	Modal,
 	MarkdownView,
+	setIcon,
 } from 'obsidian';
 import {
 	BetterTablesSettings,
@@ -232,7 +233,7 @@ export default class BetterTablesPlugin extends Plugin {
 
 			const container = tableEl.closest<HTMLElement>('.table-wrapper, .cm-html-embed')
 				?? tableEl.parentElement;
-			if (!container || container.querySelector(':scope > .better-table-convert-button')) return;
+			if (!container) return;
 
 			if (container.hasClass('cm-html-embed')) {
 				this.enhanceTableLivePreview(tableEl);
@@ -240,25 +241,62 @@ export default class BetterTablesPlugin extends Plugin {
 			}
 
 			container.addClass('better-table-convert-container');
-			const button = container.createEl('button', {
-				cls: 'better-table-convert-button',
-				text: 'Convert',
-				attr: {
-					type: 'button',
-					'aria-label': 'Convert table between Markdown and HTML',
-					title: 'Convert table between Markdown and HTML',
-				},
-			});
+			this.installFloatingConversionButton(tableEl);
+		});
+	}
 
-			button.addEventListener('mousedown', (e) => {
-				e.preventDefault();
-				e.stopPropagation();
-			});
-			button.addEventListener('click', (e) => {
-				e.preventDefault();
-				e.stopPropagation();
-				this.convertTableFromButton(tableEl);
-			});
+	private installFloatingConversionButton(tableEl: HTMLTableElement): void {
+		const button = activeDocument.body.createEl('button', {
+			cls: 'better-table-convert-button',
+			attr: {
+				type: 'button',
+				'aria-label': 'Convert table between Markdown and HTML',
+				title: 'Convert table between Markdown and HTML',
+			},
+		});
+		setIcon(button, 'repeat-2');
+
+		const updatePosition = () => {
+			if (!tableEl.isConnected) {
+				button.remove();
+				return;
+			}
+			const rect = tableEl.getBoundingClientRect();
+			const isVisible = rect.bottom > 0
+				&& rect.top < activeWindow.innerHeight
+				&& rect.right > 0
+				&& rect.left < activeWindow.innerWidth;
+			button.toggleClass('mod-hidden', !isVisible);
+			if (!isVisible) return;
+			const left = Math.max(4, rect.left - 36);
+			const top = Math.max(4, rect.top + 2);
+			button.style.setProperty('left', `${left}px`);
+			button.style.setProperty('top', `${top}px`);
+		};
+
+		updatePosition();
+		const resizeObserver = new ResizeObserver(updatePosition);
+		resizeObserver.observe(tableEl);
+
+		const onScrollOrResize = () => updatePosition();
+		activeWindow.addEventListener('scroll', onScrollOrResize, true);
+		activeWindow.addEventListener('resize', onScrollOrResize);
+
+		button.addEventListener('mousedown', (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+		});
+		button.addEventListener('click', (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			this.convertTableFromButton(tableEl);
+		});
+
+		this.register(() => {
+			resizeObserver.disconnect();
+			activeWindow.removeEventListener('scroll', onScrollOrResize, true);
+			activeWindow.removeEventListener('resize', onScrollOrResize);
+			button.remove();
 		});
 	}
 
@@ -333,7 +371,9 @@ export default class BetterTablesPlugin extends Plugin {
 		tableEl.addClass('better-table');
 		this.enhanceRenderedContent(tableEl);
 		this.addColumnResizeHandles(tableEl);
+		this.addTableWidthResizeHandle(tableEl);
 		this.addCellSelectionHandlers(tableEl);
+		this.addEdgeSelectionHandlers(tableEl);
 	}
 
 	private enhanceTable(tableEl: HTMLTableElement, context: MarkdownPostProcessorContext): void {
@@ -349,9 +389,11 @@ export default class BetterTablesPlugin extends Plugin {
 
 		// Add drag handles for column resizing
 		this.addColumnResizeHandles(tableEl);
+		this.addTableWidthResizeHandle(tableEl);
 
 		// Add cell click handlers for selection
 		this.addCellSelectionHandlers(tableEl);
+		this.addEdgeSelectionHandlers(tableEl);
 
 		// Add caption support
 		if (this.settings.enableCaption) {
@@ -421,6 +463,64 @@ export default class BetterTablesPlugin extends Plugin {
 		});
 	}
 
+	private addTableWidthResizeHandle(tableEl: HTMLTableElement): void {
+		const container = tableEl.closest<HTMLElement>('.better-table-convert-container') ?? tableEl.parentElement;
+		if (!container || container.querySelector(':scope > .table-width-resize-handle')) return;
+
+		container.addClass('better-table-convert-container');
+		const handle = container.createEl('div', {
+			cls: 'table-width-resize-handle',
+			attr: {
+				'aria-hidden': 'true',
+			},
+		});
+
+		const updateHandlePosition = () => {
+			handle.style.setProperty('left', `${tableEl.offsetLeft + tableEl.offsetWidth - 3}px`);
+			handle.style.setProperty('top', `${tableEl.offsetTop}px`);
+			handle.style.setProperty('height', `${tableEl.offsetHeight}px`);
+		};
+
+		updateHandlePosition();
+		const resizeObserver = new ResizeObserver(updateHandlePosition);
+		resizeObserver.observe(tableEl);
+		this.register(() => resizeObserver.disconnect());
+
+		handle.addEventListener('dblclick', (e: MouseEvent) => {
+			e.preventDefault();
+			e.stopPropagation();
+			tableEl.style.removeProperty('width');
+			updateHandlePosition();
+			this.persistTableChanges(tableEl);
+		});
+
+		handle.addEventListener('mousedown', (e: MouseEvent) => {
+			if (e.button !== 0) return;
+			e.preventDefault();
+			e.stopPropagation();
+
+			const startX = e.clientX;
+			const startWidth = tableEl.offsetWidth;
+			tableEl.addClass('resizing');
+
+			const onMouseMove = (moveEvent: MouseEvent) => {
+				const width = Math.max(160, startWidth + (moveEvent.clientX - startX));
+				tableEl.style.setProperty('width', `${width}px`);
+				updateHandlePosition();
+			};
+
+			const onMouseUp = () => {
+				tableEl.removeClass('resizing');
+				this.persistTableChanges(tableEl);
+				activeDocument.removeEventListener('mousemove', onMouseMove);
+				activeDocument.removeEventListener('mouseup', onMouseUp);
+			};
+
+			activeDocument.addEventListener('mousemove', onMouseMove);
+			activeDocument.addEventListener('mouseup', onMouseUp);
+		});
+	}
+
 	private addCellSelectionHandlers(tableEl: HTMLTableElement): void {
 		const cells = tableEl.querySelectorAll('td, th');
 		cells.forEach(cell => {
@@ -431,16 +531,16 @@ export default class BetterTablesPlugin extends Plugin {
 
 				// Only handle left click for selection
 				if (mouseEvent.button !== 0) return;
+				if ((mouseEvent.target as HTMLElement).closest('.column-resize-handle')) return;
 
 				const cellEl = cell as HTMLElement;
+				e.preventDefault();
 
 				if (mouseEvent.shiftKey && this.lastSelectedCell) {
 					// Range selection with Shift+click
-					e.preventDefault();
 					this.selectCellRange(tableEl, this.lastSelectedCell, cellEl);
 				} else if (mouseEvent.ctrlKey || mouseEvent.metaKey) {
 					// Toggle selection with Ctrl/Cmd+click
-					e.preventDefault();
 					this.toggleCellSelection(cellEl);
 				} else {
 					// Single selection - clear previous and select new
@@ -449,8 +549,52 @@ export default class BetterTablesPlugin extends Plugin {
 				}
 
 				this.lastSelectedCell = cellEl;
+				this.startCellDragSelection(tableEl, cellEl);
 			});
 		});
+	}
+
+	private addEdgeSelectionHandlers(tableEl: HTMLTableElement): void {
+		if (tableEl.hasClass('better-table-edge-ready')) return;
+		tableEl.addClass('better-table-edge-ready');
+
+		tableEl.addEventListener('mousedown', (e: MouseEvent) => {
+			if (e.button !== 0) return;
+			const target = e.target as HTMLElement;
+			if (target.closest('.column-resize-handle, .table-width-resize-handle, .better-table-convert-button')) return;
+
+			const edge = this.getTableEdgeHit(tableEl, e);
+			if (!edge) return;
+
+			e.preventDefault();
+			e.stopPropagation();
+			if (edge === 'top') {
+				this.selectColumnAtPoint(tableEl, e.clientX);
+			} else {
+				this.selectRowAtPoint(tableEl, e.clientY);
+			}
+		}, true);
+	}
+
+	private startCellDragSelection(tableEl: HTMLTableElement, startCell: HTMLElement): void {
+		let dragging = false;
+
+		const onMouseMove = (moveEvent: MouseEvent) => {
+			const targetCell = this.getCellAtPoint(tableEl, moveEvent.clientX, moveEvent.clientY);
+			if (!targetCell || targetCell === this.lastSelectedCell) return;
+			dragging = true;
+			this.selectCellRange(tableEl, startCell, targetCell);
+			this.lastSelectedCell = targetCell;
+		};
+
+		const onMouseUp = () => {
+			if (!dragging) this.lastSelectedCell = startCell;
+			activeDocument.removeEventListener('mousemove', onMouseMove);
+			activeDocument.removeEventListener('mouseup', onMouseUp);
+		};
+
+		activeDocument.addEventListener('mousemove', onMouseMove);
+		activeDocument.addEventListener('mouseup', onMouseUp);
 	}
 
 	private selectCell(cellEl: HTMLElement): void {
@@ -501,6 +645,53 @@ export default class BetterTablesPlugin extends Plugin {
 				}
 			}
 		}
+	}
+
+	private selectRowAtPoint(tableEl: HTMLTableElement, clientY: number): void {
+		const row = Array.from(tableEl.querySelectorAll<HTMLTableRowElement>('tr'))
+			.find(rowEl => {
+				const rect = rowEl.getBoundingClientRect();
+				return clientY >= rect.top && clientY <= rect.bottom;
+			});
+		if (!row) return;
+
+		this.clearCellSelection(tableEl);
+		row.querySelectorAll<HTMLElement>('td, th').forEach(cell => this.selectCell(cell));
+		this.lastSelectedCell = row.querySelector<HTMLElement>('td, th');
+	}
+
+	private selectColumnAtPoint(tableEl: HTMLTableElement, clientX: number): void {
+		const firstRow = tableEl.querySelector('tr');
+		const cells = Array.from(firstRow?.querySelectorAll<HTMLElement>('td, th') ?? []);
+		const colIndex = cells.findIndex(cell => {
+			const rect = cell.getBoundingClientRect();
+			return clientX >= rect.left && clientX <= rect.right;
+		});
+		if (colIndex < 0) return;
+
+		this.clearCellSelection(tableEl);
+		tableEl.querySelectorAll('tr').forEach(row => {
+			const cell = row.querySelectorAll<HTMLElement>('td, th')[colIndex];
+			if (cell) this.selectCell(cell);
+		});
+		this.lastSelectedCell = this.selectedCells[this.selectedCells.length - 1] ?? null;
+	}
+
+	private getTableEdgeHit(tableEl: HTMLTableElement, e: MouseEvent): 'top' | 'left' | null {
+		const rect = tableEl.getBoundingClientRect();
+		const edgeSize = 8;
+		const onTopEdge = e.clientY >= rect.top && e.clientY <= rect.top + edgeSize;
+		const onLeftEdge = e.clientX >= rect.left && e.clientX <= rect.left + edgeSize;
+		if (onTopEdge) return 'top';
+		if (onLeftEdge) return 'left';
+		return null;
+	}
+
+	private getCellAtPoint(tableEl: HTMLTableElement, clientX: number, clientY: number): HTMLElement | null {
+		const element = activeDocument.elementFromPoint(clientX, clientY);
+		const cell = element?.closest<HTMLElement>('td, th') ?? null;
+		if (!cell || cell.closest('table') !== tableEl) return null;
+		return cell;
 	}
 
 	private getCellPosition(cellEl: HTMLElement): { row: number; col: number } | null {
@@ -1072,6 +1263,7 @@ export default class BetterTablesPlugin extends Plugin {
 	private persistTableChanges(tableEl: HTMLTableElement, editor?: Editor): boolean {
 		const context = this.tableContexts.get(tableEl);
 		const html = serializeTableToHtml(tableEl);
+		const activeEditor = editor ?? this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
 
 		if (context) {
 			// Reading mode
@@ -1080,10 +1272,10 @@ export default class BetterTablesPlugin extends Plugin {
 			}
 			void replaceTableSource(this.app, context, tableEl, html);
 			return true;
-		} else if (editor) {
+		} else if (activeEditor) {
 			// Live preview: use Editor API
-			const wasHtml = isTableHtmlInEditor(editor, tableEl);
-			const success = replaceTableInEditor(editor, tableEl, html);
+			const wasHtml = isTableHtmlInEditor(activeEditor, tableEl);
+			const success = replaceTableInEditor(activeEditor, tableEl, html);
 			if (!success) {
 				new Notice('Failed to find table in source');
 				return false;
