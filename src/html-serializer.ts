@@ -99,7 +99,7 @@ function copyRows(source: Element, target: HTMLElement): void {
 
 			const cleanCell = activeDocument.createElement(child.tagName.toLowerCase());
 			copyCellAttributes(child, cleanCell);
-			cleanCell.textContent = getCleanCellText(child);
+			cleanCell.textContent = getTableCellText(child);
 			cleanRow.appendChild(cleanCell);
 		});
 		if (!cleanRow.hasChildNodes()) cleanRow.remove();
@@ -122,7 +122,7 @@ function copyCellAttributes(source: HTMLTableCellElement, target: HTMLElement): 
 	if (styles.length > 0) target.setAttribute('style', styles.join('; '));
 }
 
-function getCleanCellText(cell: HTMLTableCellElement): string {
+export function getTableCellText(cell: HTMLTableCellElement): string {
 	const raw = cell.getAttribute('data-better-raw');
 	if (raw !== null) return raw;
 

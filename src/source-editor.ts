@@ -1,5 +1,5 @@
 import { App, MarkdownPostProcessorContext, TFile, MarkdownView, Editor } from 'obsidian';
-import { isHtmlInSection } from './html-serializer';
+import { getTableCellText, isHtmlInSection } from './html-serializer';
 
 export interface TableSourceInfo {
 	lineStart: number;
@@ -149,6 +149,9 @@ export function findTableInSource(sourceLines: string[], tableEl: HTMLTableEleme
 	const blocks = findAllTableBlocks(sourceLines);
 	if (blocks.length === 0) return null;
 
+	const contentMatch = findTableByContent(sourceLines, tableEl, blocks);
+	if (contentMatch) return contentMatch;
+
 	// Find the index of this table among all tables in the document
 	const allTables = Array.from(activeDocument.querySelectorAll('table'));
 	const tableIndex = allTables.indexOf(tableEl);
@@ -183,32 +186,56 @@ export function findTableInSource(sourceLines: string[], tableEl: HTMLTableEleme
  * Fallback: find table by matching first row content.
  */
 function findTableByContent(sourceLines: string[], tableEl: HTMLTableElement, blocks: TableBlock[]): TableBlock | null {
-	const firstRow = tableEl.querySelector('tr');
-	if (!firstRow) return null;
-	const firstRowText = Array.from(firstRow.querySelectorAll('td, th'))
-		.map(c => c.textContent?.trim() ?? '')
-		.join('|');
+	const tableSignature = getDomTableSignature(tableEl);
+	if (tableSignature.length === 0) return null;
 
+	const matches: TableBlock[] = [];
 	for (const block of blocks) {
 		const source = sourceLines.slice(block.start, block.end + 1).join('\n');
-		const srcCells = block.kind === 'html'
-			? getFirstHtmlRowText(source)
-			: sourceLines[block.start]!.trim().split('|').filter(c => c.trim() !== '').map(c => c.trim()).join('|');
-		if (srcCells === firstRowText) {
-			return block;
+		const sourceSignature = block.kind === 'html'
+			? getHtmlTableSignature(source)
+			: getMarkdownTableSignature(sourceLines, block);
+		if (sourceSignature.length > 0 && signaturesMatch(sourceSignature, tableSignature)) {
+			matches.push(block);
 		}
 	}
-	return null;
+	return matches.length === 1 ? matches[0]! : null;
 }
 
-function getFirstHtmlRowText(html: string): string {
+function getDomTableSignature(tableEl: HTMLTableElement): string[] {
+	return Array.from(tableEl.querySelectorAll('tr'))
+		.map(row => Array.from(row.querySelectorAll('td, th'))
+			.map(c => getTableCellText(c as HTMLTableCellElement))
+			.join('|'))
+		.filter(row => row.length > 0);
+}
+
+function getHtmlTableSignature(html: string): string[] {
 	const parser = new DOMParser();
 	const doc = parser.parseFromString(html, 'text/html');
-	const firstRow = doc.querySelector('tr');
-	if (!firstRow) return '';
-	return Array.from(firstRow.querySelectorAll('td, th'))
-		.map(c => c.textContent?.trim() ?? '')
-		.join('|');
+	return Array.from(doc.querySelectorAll('tr'))
+		.map(row => Array.from(row.querySelectorAll('td, th'))
+			.map(c => c.textContent?.trim() ?? '')
+			.join('|'))
+		.filter(row => row.length > 0);
+}
+
+function getMarkdownTableSignature(sourceLines: string[], block: TableBlock): string[] {
+	return sourceLines.slice(block.start, block.end + 1)
+		.filter(line => !isMarkdownSeparator(line.trim()))
+		.map(line => line.trim().split('|').filter(c => c.trim() !== '').map(c => c.trim()).join('|'))
+		.filter(row => row.length > 0);
+}
+
+function signaturesMatch(sourceSignature: string[], tableSignature: string[]): boolean {
+	if (sourceSignature.length !== tableSignature.length) return false;
+	return sourceSignature.every((row, index) => row === tableSignature[index]);
+}
+
+function isMarkdownSeparator(line: string): boolean {
+	if (!line.startsWith('|')) return false;
+	const cells = line.split('|').filter(c => c.trim() !== '');
+	return cells.length > 0 && cells.every(c => /^:?-+:?$/.test(c.trim()));
 }
 
 /**
