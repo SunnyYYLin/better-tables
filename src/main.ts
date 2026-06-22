@@ -5,6 +5,7 @@ import {
 	Editor,
 	App,
 	Modal,
+	MarkdownView,
 } from 'obsidian';
 import {
 	BetterTablesSettings,
@@ -35,6 +36,7 @@ export default class BetterTablesPlugin extends Plugin {
 	private lastRightClickedTable: HTMLTableElement | null = null;
 	private lastRightClickedCell: HTMLElement | null = null;
 	private contextmenuHandler?: (e: MouseEvent) => void;
+	private conversionButtons = new WeakSet<HTMLTableElement>();
 
 	async onload() {
 		await this.loadSettings();
@@ -61,6 +63,7 @@ export default class BetterTablesPlugin extends Plugin {
 			}
 		};
 		activeDocument.addEventListener('contextmenu', this.contextmenuHandler, true);
+		this.registerConversionButtonObserver();
 
 		// Inject table actions into the editor's native context menu (live preview)
 		this.registerEvent(
@@ -168,15 +171,6 @@ export default class BetterTablesPlugin extends Plugin {
 							if (tableEl) this.applyAlignment(tableEl, editor, 'vertical', 'bottom');
 						})
 				);
-				menu.addSeparator();
-				menu.addItem((item) =>
-					item.setTitle(t.convertToHtml)
-						.onClick(() => this.convertTableToHtmlLive(editor, tableEl ?? undefined))
-				);
-				menu.addItem((item) =>
-					item.setTitle(t.convertToMarkdown)
-						.onClick(() => this.convertTableToMarkdownLive(editor, tableEl ?? undefined))
-				);
 			})
 		);
 
@@ -207,6 +201,78 @@ export default class BetterTablesPlugin extends Plugin {
 		if (this.contextmenuHandler) {
 			activeDocument.removeEventListener('contextmenu', this.contextmenuHandler, true);
 		}
+	}
+
+	private registerConversionButtonObserver(): void {
+		this.installConversionButtons(activeDocument.body);
+		const observer = new MutationObserver((mutations) => {
+			for (const mutation of mutations) {
+				mutation.addedNodes.forEach((node) => {
+					if (node.instanceOf(HTMLElement)) {
+						this.installConversionButtons(node);
+					}
+				});
+			}
+		});
+		observer.observe(activeDocument.body, { childList: true, subtree: true });
+		this.register(() => observer.disconnect());
+	}
+
+	private installConversionButtons(root: HTMLElement): void {
+		if (!this.settings.enableAdvancedTables) return;
+		const tables = root.matches('table')
+			? [root as HTMLTableElement]
+			: Array.from(root.querySelectorAll<HTMLTableElement>('table'));
+
+		tables.forEach((tableEl) => {
+			if (this.conversionButtons.has(tableEl)) return;
+			this.conversionButtons.add(tableEl);
+
+			const container = tableEl.closest<HTMLElement>('.table-wrapper, .cm-html-embed')
+				?? tableEl.parentElement;
+			if (!container || container.querySelector(':scope > .better-table-convert-button')) return;
+
+			container.addClass('better-table-convert-container');
+			const button = container.createEl('button', {
+				cls: 'better-table-convert-button',
+				text: 'Convert',
+				attr: {
+					type: 'button',
+					'aria-label': 'Convert table between Markdown and HTML',
+					title: 'Convert table between Markdown and HTML',
+				},
+			});
+
+			button.addEventListener('mousedown', (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+			});
+			button.addEventListener('click', (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				this.convertTableFromButton(tableEl);
+			});
+		});
+	}
+
+	private convertTableFromButton(tableEl: HTMLTableElement): void {
+		const context = this.tableContexts.get(tableEl);
+		if (context) {
+			if (isTableFromHtmlSource(context, tableEl)) {
+				void this.convertTableToMarkdown(tableEl);
+			} else {
+				void this.convertTableToHtml(tableEl);
+			}
+			return;
+		}
+
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const editor = view?.editor;
+		if (!editor) {
+			new Notice('Failed to find active editor');
+			return;
+		}
+		this.toggleTableSourceFormat(editor, tableEl);
 	}
 
 	async loadSettings() {
@@ -826,9 +892,6 @@ export default class BetterTablesPlugin extends Plugin {
 			{ text: this.t.top, action: () => this.applyAlignment(tableEl, undefined, 'vertical', 'top') },
 			{ text: this.t.middle, action: () => this.applyAlignment(tableEl, undefined, 'vertical', 'middle') },
 			{ text: this.t.bottom, action: () => this.applyAlignment(tableEl, undefined, 'vertical', 'bottom') },
-			{ text: '---', action: () => undefined },
-			{ text: this.t.convertToHtml, action: () => void this.convertTableToHtml(tableEl) },
-			{ text: this.t.convertToMarkdown, action: () => void this.convertTableToMarkdown(tableEl) },
 		];
 	}
 
@@ -854,6 +917,38 @@ export default class BetterTablesPlugin extends Plugin {
 	}
 
 	// --- Conversion (live preview, via Editor API) ---
+
+	private toggleTableSourceFormat(editor: Editor, tableEl: HTMLTableElement): void {
+		const sourceText = editor.getValue();
+		const lines = sourceText.split('\n');
+		const range = this.findEditableTableRange(editor, tableEl);
+		if (!range) {
+			new Notice('Failed to find table in source');
+			return;
+		}
+
+		const source = lines.slice(range.start, range.end + 1).join('\n');
+		if (range.kind === 'markdown') {
+			const tableData = parseMarkdownTable(source);
+			if (!tableData) {
+				new Notice('Failed to parse table');
+				return;
+			}
+			if (replaceTableRangeInEditor(editor, range, tableDataToHtml(tableData))) {
+				new Notice(this.t.tableConvertedToHtml);
+			}
+			return;
+		}
+
+		const tableData = parseHtmlToTableData(source);
+		if (!tableData) {
+			new Notice('Failed to parse table');
+			return;
+		}
+		if (replaceTableRangeInEditor(editor, range, markdownTableToString(tableData))) {
+			new Notice(this.t.tableConvertedToMarkdown);
+		}
+	}
 
 	private convertTableToHtmlLive(editor: Editor, tableEl?: HTMLTableElement): void {
 		const sourceText = editor.getValue();

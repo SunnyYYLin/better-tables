@@ -213,3 +213,28 @@
 	justify-content: flex-end;
 	gap: 0.5em;
 }
+
+.better-table-convert-container {
+	position: relative;
+}
+
+.better-table-convert-button {
+	position: absolute;
+	top: 4px;
+	left: 4px;
+	z-index: 20;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background: var(--background-primary);
+	color: var(--text-muted);
+	font-size: 11px;
+	line-height: 1;
+	padding: 4px 6px;
+	opacity: 0;
+	transition: opacity 0.12s ease-in-out;
+}
+
+.better-table-convert-container:hover > .better-table-convert-button,
+.better-table-convert-button:focus {
+	opacity: 1;
+}
