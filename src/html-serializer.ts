@@ -5,48 +5,27 @@ import { TableData } from './types';
  * Strips plugin-injected artifacts (resize handles, selection classes, cache attributes, hidden merge cells).
  */
 export function serializeTableToHtml(tableEl: HTMLTableElement): string {
-	const clone = tableEl.cloneNode(true) as HTMLTableElement;
-
-	clone.querySelectorAll('th, td').forEach(cell => {
-		const htmlCell = cell as HTMLElement;
-		const raw = htmlCell.getAttribute('data-better-raw');
-		if (raw !== null) {
-			htmlCell.empty();
-			htmlCell.textContent = raw;
-		}
-		htmlCell.removeAttribute('data-better-raw');
-	});
-
-	// Remove resize handle divs
-	clone.querySelectorAll('.column-resize-handle').forEach(el => el.remove());
-
-	// Remove hidden merged cells (in proper HTML, spanned positions have no cell)
-	clone.querySelectorAll('.merged-cell-hidden').forEach(el => el.remove());
-
-	// Strip plugin-specific classes
-	clone.classList.remove('better-table', 'resizing');
-	clone.querySelectorAll('.cell-selected').forEach(el => el.classList.remove('cell-selected'));
-
-	// Strip plugin-specific attributes
-	clone.removeAttribute('data-table-cache-key');
-	clone.querySelectorAll('[data-table-cache-key]').forEach(el => el.removeAttribute('data-table-cache-key'));
-	clone.querySelectorAll('[data-merged]').forEach(el => el.removeAttribute('data-merged'));
-
-	// Keep user-facing width/alignment styles, but remove empty style attributes.
-	clone.querySelectorAll('th, td').forEach(cell => {
-		const htmlCell = cell as HTMLElement;
-		if (!htmlCell.getAttribute('style') || htmlCell.getAttribute('style') === '') {
-			htmlCell.removeAttribute('style');
-		}
-	});
-
-	// Remove empty class attributes
-	if (!clone.getAttribute('class') || clone.getAttribute('class') === '') {
-		clone.removeAttribute('class');
+	const cleanTable = activeDocument.createElement('table');
+	const caption = tableEl.querySelector(':scope > caption');
+	if (caption?.textContent?.trim()) {
+		const cleanCaption = cleanTable.createEl('caption');
+		cleanCaption.textContent = caption.textContent.trim();
 	}
-	clone.querySelectorAll('[class=""]').forEach(el => el.removeAttribute('class'));
 
-	return prettyPrintHtml(clone.outerHTML);
+	const sectionSelector = ':scope > thead, :scope > tbody, :scope > tfoot';
+	const sections = Array.from(tableEl.querySelectorAll<HTMLElement>(sectionSelector));
+	if (sections.length > 0) {
+		sections.forEach(section => {
+			const cleanSection = activeDocument.createElement(section.tagName.toLowerCase());
+			cleanTable.appendChild(cleanSection);
+			copyRows(section, cleanSection);
+			if (!cleanSection.hasChildNodes()) cleanSection.remove();
+		});
+	} else {
+		copyRows(tableEl, cleanTable);
+	}
+
+	return prettyPrintHtml(cleanTable.outerHTML);
 }
 
 /**
@@ -108,6 +87,59 @@ export function tableDataToHtml(table: TableData): string {
 	});
 
 	return prettyPrintHtml(tableEl.outerHTML);
+}
+
+function copyRows(source: Element, target: HTMLElement): void {
+	const rows = Array.from(source.querySelectorAll<HTMLTableRowElement>(':scope > tr'));
+	rows.forEach(row => {
+		const cleanRow = target.createEl('tr');
+		Array.from(row.children).forEach(child => {
+			if (!child.instanceOf(HTMLTableCellElement)) return;
+			if (child.hasClass('merged-cell-hidden') || child.getAttribute('data-merged') === 'true') return;
+
+			const cleanCell = activeDocument.createElement(child.tagName.toLowerCase());
+			copyCellAttributes(child, cleanCell);
+			cleanCell.textContent = getCleanCellText(child);
+			cleanRow.appendChild(cleanCell);
+		});
+		if (!cleanRow.hasChildNodes()) cleanRow.remove();
+	});
+}
+
+function copyCellAttributes(source: HTMLTableCellElement, target: HTMLElement): void {
+	const rowspan = source.getAttribute('rowspan');
+	const colspan = source.getAttribute('colspan');
+	if (rowspan && rowspan !== '1') target.setAttribute('rowspan', rowspan);
+	if (colspan && colspan !== '1') target.setAttribute('colspan', colspan);
+
+	const textAlign = source.style.textAlign || source.getAttribute('align') || '';
+	const verticalAlign = source.style.verticalAlign || '';
+	const width = source.style.width || '';
+	const styles: string[] = [];
+	if (textAlign) styles.push(`text-align: ${textAlign}`);
+	if (verticalAlign) styles.push(`vertical-align: ${verticalAlign}`);
+	if (width) styles.push(`width: ${width}`);
+	if (styles.length > 0) target.setAttribute('style', styles.join('; '));
+}
+
+function getCleanCellText(cell: HTMLTableCellElement): string {
+	const raw = cell.getAttribute('data-better-raw');
+	if (raw !== null) return raw;
+
+	const wrappers = Array.from(cell.querySelectorAll<HTMLElement>(':scope > .table-cell-wrapper'))
+		.filter(wrapper =>
+			wrapper.getAttribute('data-ignore-swipe') !== 'true' &&
+			wrapper.style.display !== 'none' &&
+			!wrapper.querySelector('.cm-editor')
+		);
+	const wrapper = wrappers[0];
+	if (wrapper) return wrapper.textContent?.trim() ?? '';
+
+	const clone = cell.cloneNode(true) as HTMLElement;
+	clone.querySelectorAll(
+		'.column-resize-handle, .table-col-drag-handle, .table-row-drag-handle, [data-ignore-swipe="true"], .cm-editor'
+	).forEach(el => el.remove());
+	return clone.textContent?.trim() ?? '';
 }
 
 /**
