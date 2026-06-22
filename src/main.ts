@@ -828,9 +828,9 @@ export default class BetterTablesPlugin extends Plugin {
 
 	private editCellText(tableEl: HTMLTableElement, cellEl: HTMLElement): void {
 		if (cellEl.hasClass('better-table-cell-editing')) return;
-		const originalText = cellEl.getAttribute('data-better-raw') ?? cellEl.textContent ?? '';
+		const originalText = (cellEl.getAttribute('data-better-raw') ?? cellEl.textContent ?? '').trim();
 		cellEl.empty();
-		cellEl.textContent = originalText;
+		if (originalText) cellEl.textContent = originalText;
 		cellEl.addClass('better-table-cell-editing');
 		cellEl.setAttribute('contenteditable', 'true');
 		cellEl.focus();
@@ -851,8 +851,13 @@ export default class BetterTablesPlugin extends Plugin {
 				cellEl.textContent = originalText;
 				return;
 			}
-			const nextText = cellEl.textContent ?? '';
-			cellEl.setAttribute('data-better-raw', nextText);
+			const nextText = cellEl.textContent?.trim() ?? '';
+			if (nextText) {
+				cellEl.setAttribute('data-better-raw', nextText);
+			} else {
+				cellEl.removeAttribute('data-better-raw');
+				cellEl.empty();
+			}
 			this.persistTableChanges(tableEl);
 			this.renderCellPreview(tableEl, cellEl);
 		};
@@ -984,7 +989,7 @@ export default class BetterTablesPlugin extends Plugin {
 
 	private renderCellPreview(tableEl: HTMLTableElement, cellEl: HTMLElement): void {
 		if (cellEl.hasClass('better-table-cell-editing')) return;
-		const raw = cellEl.getAttribute('data-better-raw') ?? cellEl.textContent ?? '';
+		const raw = (cellEl.getAttribute('data-better-raw') ?? cellEl.textContent ?? '').trim();
 		const preservedChildren = Array.from(cellEl.children)
 			.filter(child => child.hasClass('column-resize-handle'));
 		this.unloadRenderedCell(cellEl);
@@ -992,6 +997,13 @@ export default class BetterTablesPlugin extends Plugin {
 		cellEl.removeClass('formula-result');
 		cellEl.removeClass('formula-error');
 		cellEl.removeClass('formula-cell');
+
+		if (!raw) {
+			cellEl.removeAttribute('data-better-raw');
+			cellEl.empty();
+			preservedChildren.forEach(child => cellEl.appendChild(child));
+			return;
+		}
 
 		if (this.settings.enableFormula && raw.trim().startsWith('=')) {
 			cellEl.setAttribute('data-better-raw', raw);
