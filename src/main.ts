@@ -110,6 +110,7 @@ export default class BetterTablesPlugin extends Plugin {
 						.setDisabled(!tableEl)
 						.onClick(() => {
 							if (!tableEl) return;
+							if (!this.canPersistLiveTable(editor, tableEl)) return;
 							TableStyler.autoFitColumns(tableEl);
 							this.persistTableChanges(tableEl, editor);
 						})
@@ -119,6 +120,7 @@ export default class BetterTablesPlugin extends Plugin {
 						.setDisabled(!tableEl)
 						.onClick(() => {
 							if (!tableEl) return;
+							if (!this.canPersistLiveTable(editor, tableEl)) return;
 							TableStyler.equalizeColumns(tableEl);
 							this.persistTableChanges(tableEl, editor);
 						})
@@ -581,6 +583,7 @@ export default class BetterTablesPlugin extends Plugin {
 	 * For now, this modifies the DOM only (visual change) and notifies the user.
 	 */
 	private toggleHeaderColumnInSource(editor: Editor, tableEl: HTMLTableElement): void {
+		if (!this.canPersistLiveTable(editor, tableEl)) return;
 		this.toggleHeaderColumnInDom(tableEl);
 		if (isTableHtmlInEditor(editor, tableEl)) {
 			replaceTableInEditor(editor, tableEl, serializeTableToHtml(tableEl));
@@ -655,9 +658,25 @@ export default class BetterTablesPlugin extends Plugin {
 		return line.split('|').filter(c => c.trim() !== '').length;
 	}
 
+	private findEditableTableRange(editor: Editor, tableEl: HTMLTableElement): ReturnType<typeof findTableInSource> {
+		const lines = editor.getValue().split('\n');
+		return findTableNearEditorSelection(editor) ?? findTableInSource(lines, tableEl);
+	}
+
+	private canPersistLiveTable(editor: Editor | undefined, tableEl: HTMLTableElement): boolean {
+		if (!editor) return true;
+		const range = this.findEditableTableRange(editor, tableEl);
+		if (!range) {
+			new Notice('Failed to find table in source');
+			return false;
+		}
+		return true;
+	}
+
 	// --- Merge/Unmerge (DOM + source via Editor API) ---
 
 	private mergeSelectedCells(tableEl: HTMLTableElement, editor?: Editor): void {
+		if (!this.canPersistLiveTable(editor, tableEl)) return;
 		if (this.selectedCells.length < 2) {
 			new Notice(this.t.selectAtLeast2Cells);
 			return;
@@ -718,6 +737,7 @@ export default class BetterTablesPlugin extends Plugin {
 	}
 
 	private unmergeCells(tableEl: HTMLTableElement, editor?: Editor): void {
+		if (!this.canPersistLiveTable(editor, tableEl)) return;
 		// Find a merged cell in the table
 		const mergedCell = tableEl.querySelector<HTMLElement>(
 			'td[rowspan], td[colspan], th[rowspan], th[colspan]'
@@ -764,6 +784,7 @@ export default class BetterTablesPlugin extends Plugin {
 		direction: 'horizontal' | 'vertical',
 		value: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom',
 	): void {
+		if (!this.canPersistLiveTable(editor, tableEl)) return;
 		const cells = this.selectedCells.length > 0
 			? this.selectedCells
 			: this.lastRightClickedCell
@@ -929,7 +950,7 @@ export default class BetterTablesPlugin extends Plugin {
 
 	// --- Persistence ---
 
-	private persistTableChanges(tableEl: HTMLTableElement, editor?: Editor): void {
+	private persistTableChanges(tableEl: HTMLTableElement, editor?: Editor): boolean {
 		const context = this.tableContexts.get(tableEl);
 		const html = serializeTableToHtml(tableEl);
 
@@ -939,13 +960,21 @@ export default class BetterTablesPlugin extends Plugin {
 				new Notice(this.t.tableConvertedToHtml);
 			}
 			void replaceTableSource(this.app, context, tableEl, html);
+			return true;
 		} else if (editor) {
 			// Live preview: use Editor API
-			if (!isTableHtmlInEditor(editor, tableEl)) {
+			const wasHtml = isTableHtmlInEditor(editor, tableEl);
+			const success = replaceTableInEditor(editor, tableEl, html);
+			if (!success) {
+				new Notice('Failed to find table in source');
+				return false;
+			}
+			if (!wasHtml) {
 				new Notice(this.t.tableConvertedToHtml);
 			}
-			replaceTableInEditor(editor, tableEl, html);
+			return true;
 		}
+		return false;
 	}
 
 	private isTableHtml(tableEl: HTMLTableElement): boolean {

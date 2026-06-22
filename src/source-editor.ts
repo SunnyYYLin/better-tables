@@ -189,17 +189,22 @@ function findTableByContent(sourceLines: string[], tableEl: HTMLTableElement, bl
 	const tableSignature = getDomTableSignature(tableEl);
 	if (tableSignature.length === 0) return null;
 
-	const matches: TableBlock[] = [];
+	const matches: Array<{ block: TableBlock; score: number }> = [];
 	for (const block of blocks) {
 		const source = sourceLines.slice(block.start, block.end + 1).join('\n');
 		const sourceSignature = block.kind === 'html'
 			? getHtmlTableSignature(source)
 			: getMarkdownTableSignature(sourceLines, block);
-		if (sourceSignature.length > 0 && signaturesMatch(sourceSignature, tableSignature)) {
-			matches.push(block);
+		const score = getSignatureMatchScore(sourceSignature, tableSignature);
+		if (score > 0) {
+			matches.push({ block, score });
 		}
 	}
-	return matches.length === 1 ? matches[0]! : null;
+	if (matches.length === 0) return null;
+
+	const bestScore = Math.max(...matches.map(match => match.score));
+	const bestMatches = matches.filter(match => match.score === bestScore);
+	return bestMatches.length === 1 ? bestMatches[0]!.block : null;
 }
 
 function getDomTableSignature(tableEl: HTMLTableElement): string[] {
@@ -227,9 +232,18 @@ function getMarkdownTableSignature(sourceLines: string[], block: TableBlock): st
 		.filter(row => row.length > 0);
 }
 
-function signaturesMatch(sourceSignature: string[], tableSignature: string[]): boolean {
-	if (sourceSignature.length !== tableSignature.length) return false;
-	return sourceSignature.every((row, index) => row === tableSignature[index]);
+function getSignatureMatchScore(sourceSignature: string[], tableSignature: string[]): number {
+	if (sourceSignature.length === 0 || tableSignature.length === 0) return 0;
+	if (sourceSignature[0] !== tableSignature[0]) return 0;
+
+	let score = 1;
+	const comparableRows = Math.min(sourceSignature.length, tableSignature.length);
+	for (let index = 1; index < comparableRows; index++) {
+		if (sourceSignature[index] !== tableSignature[index]) break;
+		score++;
+	}
+
+	return score;
 }
 
 function isMarkdownSeparator(line: string): boolean {
