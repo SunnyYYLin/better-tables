@@ -55,10 +55,11 @@ export async function replaceTableSource(
 
 	const content = await app.vault.read(file);
 	const lines = content.split('\n');
+	const lineStart = getCaptionStart(lines, info.lineStart);
 
 	// Replace lines lineStart..lineEnd with newContent
 	const newLines = newContent.split('\n');
-	lines.splice(info.lineStart, info.lineEnd - info.lineStart + 1, ...newLines);
+	lines.splice(lineStart, info.lineEnd - lineStart + 1, ...newLines);
 
 	await app.vault.modify(file, lines.join('\n'));
 	return true;
@@ -95,7 +96,7 @@ export function findAllTableBlocks(lines: string[]): TableBlock[] {
 	while (i < lines.length) {
 		const line = lines[i]!.trim();
 		if (line.startsWith('|')) {
-			const start = i;
+			const start = getCaptionStart(lines, i);
 			let end = i;
 			while (end + 1 < lines.length && lines[end + 1]!.trim().startsWith('|')) {
 				end++;
@@ -115,6 +116,30 @@ export function findAllTableBlocks(lines: string[]): TableBlock[] {
 		}
 	}
 	return blocks;
+}
+
+function getCaptionStart(lines: string[], tableStart: number): number {
+	const previousLine = tableStart - 1;
+	if (previousLine >= 0 && isCaptionLine(lines[previousLine]!)) {
+		return previousLine;
+	}
+
+	const lineBeforeBlank = tableStart - 2;
+	if (
+		previousLine >= 0 &&
+		lines[previousLine]!.trim() === '' &&
+		lineBeforeBlank >= 0 &&
+		isCaptionLine(lines[lineBeforeBlank]!)
+	) {
+		return lineBeforeBlank;
+	}
+
+	return tableStart;
+}
+
+function isCaptionLine(line: string): boolean {
+	const trimmed = line.trim();
+	return /^\[.+]$/.test(trimmed);
 }
 
 export function findTableAtLine(sourceLines: string[], line: number): TableBlock | null {
@@ -227,7 +252,7 @@ function getHtmlTableSignature(html: string): string[] {
 
 function getMarkdownTableSignature(sourceLines: string[], block: TableBlock): string[] {
 	return sourceLines.slice(block.start, block.end + 1)
-		.filter(line => !isMarkdownSeparator(line.trim()))
+		.filter(line => line.trim().startsWith('|') && !isMarkdownSeparator(line.trim()))
 		.map(line => line.trim().split('|').filter(c => c.trim() !== '').map(c => c.trim()).join('|'))
 		.filter(row => row.length > 0);
 }

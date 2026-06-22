@@ -9,11 +9,12 @@ export function parseMarkdownTable(content: string): TableData | null {
 	let hasHeaderColumn = false;
 	let caption: string | undefined;
 
-	// Check for caption (Table: prefix)
+	// Check for caption ([caption] format)
 	let startIndex = 0;
 	const firstLine = lines[0];
-	if (firstLine && firstLine.trim().startsWith('Table:')) {
-		caption = firstLine.trim().substring(6).trim();
+	const parsedCaption = firstLine ? parseCaptionLine(firstLine) : null;
+	if (parsedCaption !== null) {
+		caption = parsedCaption;
 		startIndex = 1;
 		
 		// Skip empty lines after caption
@@ -84,12 +85,19 @@ function isSeparatorRow(line: string): boolean {
 	return cells.every(cell => /^:?-+:?$/.test(cell));
 }
 
+function parseCaptionLine(line: string): string | null {
+	const trimmed = line.trim();
+	const bracketMatch = trimmed.match(/^\[(.+)]$/);
+	if (bracketMatch) return bracketMatch[1]!.trim();
+	return null;
+}
+
 export function markdownTableToString(table: TableData): string {
 	const lines: string[] = [];
 
 	// Add caption if present
 	if (table.caption) {
-		lines.push('Table: ' + table.caption);
+		lines.push(`[${table.caption}]`);
 		lines.push('');
 	}
 

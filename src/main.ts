@@ -1192,7 +1192,7 @@ export default class BetterTablesPlugin extends Plugin {
 
 			// Insert caption line before the table
 			editor.replaceRange(
-				'Table: ' + caption + '\n',
+				`[${caption}]\n\n`,
 				{ line: range.start, ch: 0 },
 				{ line: range.start, ch: 0 }
 			);
@@ -1674,10 +1674,10 @@ export default class BetterTablesPlugin extends Plugin {
 			const prevSibling = tableEl.previousElementSibling;
 			if (prevSibling && prevSibling.tagName === 'P') {
 				const text = prevSibling.textContent?.trim();
-				if (text && text.startsWith('Table:')) {
-					const caption = text.substring(6).trim();
+				const bracketCaption = text?.match(/^\[(.+)]$/)?.[1]?.trim();
+				if (bracketCaption) {
 					const captionEl = tableEl.createEl('caption');
-					captionEl.textContent = caption;
+					captionEl.textContent = bracketCaption;
 					this.addCaptionInteractionHandlers(tableEl);
 					prevSibling.remove();
 				}

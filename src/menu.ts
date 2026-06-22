@@ -16,20 +16,31 @@ export class TableMenu {
 		menu.style.setProperty('--menu-x', `${e.clientX}px`);
 		menu.style.setProperty('--menu-y', `${e.clientY}px`);
 
-		this.renderActions(menu, actions, () => menu.remove());
+		// Close menu when interacting elsewhere. Targets can be text nodes inside cells,
+		// so avoid assuming HTMLElement.closest() is available.
+		const isInsideMenu = (target: EventTarget | null): boolean => {
+			return target instanceof Node && menu.contains(target);
+		};
+		const removeMenu = () => {
+			menu.remove();
+			activeDocument.removeEventListener('click', closeMenu, true);
+			activeDocument.removeEventListener('mousedown', closeMenu, true);
+			activeDocument.removeEventListener('pointerdown', closeMenu, true);
+			activeDocument.removeEventListener('contextmenu', closeMenu, true);
+		};
+		const closeMenu = (event: MouseEvent | PointerEvent) => {
+			if (isInsideMenu(event.target)) return;
+			removeMenu();
+		};
 
+		this.renderActions(menu, actions, removeMenu);
 		activeDocument.body.appendChild(menu);
 
-		// Close menu when clicking elsewhere
-		const closeMenu = (event: MouseEvent) => {
-			if ((event.target as HTMLElement).closest('.table-context-menu')) return;
-			menu.remove();
-			activeDocument.removeEventListener('click', closeMenu);
-			activeDocument.removeEventListener('mousedown', closeMenu, true);
-		};
 		window.setTimeout(() => {
-			activeDocument.addEventListener('click', closeMenu);
+			activeDocument.addEventListener('click', closeMenu, true);
 			activeDocument.addEventListener('mousedown', closeMenu, true);
+			activeDocument.addEventListener('pointerdown', closeMenu, true);
+			activeDocument.addEventListener('contextmenu', closeMenu, true);
 		}, 0);
 	}
 
