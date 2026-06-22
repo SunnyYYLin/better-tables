@@ -42,12 +42,13 @@ export class TableRenderer {
 	}
 
 	private renderCellContent(cellEl: HTMLElement, content: string): void {
-		if (this.config.enableFormula && content.startsWith('=')) {
-			this.renderFormula(cellEl, content);
-		} else if (this.config.enableNewline && content.includes('\\n')) {
-			this.renderMultiline(cellEl, content);
+		const trimmedContent = content.trim();
+		if (this.config.enableFormula && trimmedContent.startsWith('=')) {
+			this.renderFormula(cellEl, trimmedContent);
+		} else if (this.config.enableNewline && trimmedContent.includes('\\n')) {
+			this.renderMultiline(cellEl, trimmedContent);
 		} else {
-			cellEl.textContent = content;
+			if (trimmedContent) cellEl.textContent = trimmedContent;
 		}
 	}
 

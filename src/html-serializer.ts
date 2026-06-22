@@ -167,7 +167,7 @@ function copyCellAttributes(source: HTMLTableCellElement, target: HTMLElement): 
 
 export function getTableCellText(cell: HTMLTableCellElement): string {
 	const raw = cell.getAttribute('data-better-raw');
-	if (raw !== null) return raw;
+	if (raw !== null) return raw.trim();
 
 	const wrappers = Array.from(cell.querySelectorAll<HTMLElement>(':scope > .table-cell-wrapper'))
 		.filter(wrapper =>
@@ -201,7 +201,10 @@ function prettyPrintHtml(html: string): string {
 	const tab = '  ';
 
 	// Split on tags while keeping them
-	const tokens = html.replace(/>\s*</g, '>\n<').split('\n');
+	const normalizedHtml = html
+		.replace(/<(td|th)([^>]*)>\s+<\/\1>/gi, '<$1$2></$1>')
+		.replace(/>\s*</g, '>\n<');
+	const tokens = normalizedHtml.split('\n');
 
 	for (const token of tokens) {
 		const trimmed = token.trim();
