@@ -10,7 +10,8 @@
 
 .better-table {
 	border-collapse: collapse;
-	width: 100%;
+	width: max-content;
+	max-width: 100%;
 	margin: 1em 0;
 	position: relative;
 }
