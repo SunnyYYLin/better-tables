@@ -37,6 +37,7 @@ export default class BetterTablesPlugin extends Plugin {
 	private lastRightClickedCell: HTMLElement | null = null;
 	private contextmenuHandler?: (e: MouseEvent) => void;
 	private conversionButtons = new WeakSet<HTMLTableElement>();
+	private htmlSourceEditGuards = new WeakSet<HTMLTableElement>();
 
 	async onload() {
 		await this.loadSettings();
@@ -70,10 +71,11 @@ export default class BetterTablesPlugin extends Plugin {
 			this.app.workspace.on('editor-menu', (menu, editor, view) => {
 				if (!this.settings.enableAdvancedTables) return;
 				const tableEl = this.lastRightClickedTable;
-				const sourceRange = findTableNearEditorSelection(editor);
-				if (!tableEl && !sourceRange) return;
+				if (!tableEl) return;
 				// Reading-mode tables are handled by their own per-table listener
 				if (tableEl && this.tableContexts.has(tableEl)) return;
+				const sourceRange = this.findEditableTableRange(editor, tableEl);
+				if (!sourceRange || sourceRange.kind !== 'html') return;
 
 				const t = this.t;
 				menu.addSeparator();
@@ -232,6 +234,11 @@ export default class BetterTablesPlugin extends Plugin {
 				?? tableEl.parentElement;
 			if (!container || container.querySelector(':scope > .better-table-convert-button')) return;
 
+			if (container.hasClass('cm-html-embed')) {
+				this.enhanceTableLivePreview(tableEl);
+				this.suppressHtmlEmbedSourceEdit(tableEl);
+			}
+
 			container.addClass('better-table-convert-container');
 			const button = container.createEl('button', {
 				cls: 'better-table-convert-button',
@@ -273,6 +280,23 @@ export default class BetterTablesPlugin extends Plugin {
 			return;
 		}
 		this.toggleTableSourceFormat(editor, tableEl);
+	}
+
+	private suppressHtmlEmbedSourceEdit(tableEl: HTMLTableElement): void {
+		if (this.htmlSourceEditGuards.has(tableEl)) return;
+		this.htmlSourceEditGuards.add(tableEl);
+
+		const stopLeftClick = (e: MouseEvent) => {
+			if (e.button === 2) return;
+			const target = e.target as HTMLElement;
+			if (target.closest('.better-table-convert-button')) return;
+			e.preventDefault();
+			e.stopPropagation();
+		};
+
+		tableEl.addEventListener('mousedown', stopLeftClick);
+		tableEl.addEventListener('click', stopLeftClick);
+		tableEl.addEventListener('dblclick', stopLeftClick);
 	}
 
 	async loadSettings() {
