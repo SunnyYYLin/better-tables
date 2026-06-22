@@ -34,6 +34,7 @@ export default class BetterTablesPlugin extends Plugin {
 	private tableContexts = new WeakMap<HTMLTableElement, MarkdownPostProcessorContext>();
 	private enhancedTables = new WeakSet<HTMLTableElement>();
 	private lastRightClickedTable: HTMLTableElement | null = null;
+	private contextmenuHandler?: (e: MouseEvent) => void;
 
 	async onload() {
 		await this.loadSettings();
@@ -49,11 +50,13 @@ export default class BetterTablesPlugin extends Plugin {
 			this.processTables(element, context);
 		});
 
-		// Capture-phase listener to record the right-clicked table element
-		this.registerDomEvent(document, 'contextmenu', (e: MouseEvent) => {
+		// Capture-phase listener to record the right-clicked table element.
+		// Must use addEventListener directly (not registerDomEvent) for capture phase.
+		this.contextmenuHandler = (e: MouseEvent) => {
 			const target = e.target as HTMLElement;
 			this.lastRightClickedTable = target.closest('table') as HTMLTableElement | null;
-		}, true);
+		};
+		document.addEventListener('contextmenu', this.contextmenuHandler, true);
 
 		// Inject table actions into the editor's native context menu (live preview)
 		this.registerEvent(
@@ -138,7 +141,9 @@ export default class BetterTablesPlugin extends Plugin {
 	}
 
 	onunload() {
-		// Cleanup
+		if (this.contextmenuHandler) {
+			document.removeEventListener('contextmenu', this.contextmenuHandler, true);
+		}
 	}
 
 	async loadSettings() {

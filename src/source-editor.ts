@@ -76,45 +76,99 @@ export function isTableFromHtmlSource(
 	return isHtmlInSection(info.text);
 }
 
+// --- Table block detection in source ---
+
+interface TableBlock {
+	start: number; // first line of table (inclusive)
+	end: number;   // last line of table (inclusive)
+}
+
 /**
- * Find the rendered table's position in the source lines by matching content.
- * Returns line range {start, end} (0-based inclusive) or null.
+ * Find all table blocks in source lines.
+ * A table block is a contiguous sequence of lines starting with '|'.
+ * Also includes a following separator line if present.
  */
-export function findTableInSource(sourceLines: string[], tableEl: HTMLTableElement): { start: number; end: number } | null {
-	// Get first row text from rendered table
+function findAllTableBlocks(lines: string[]): TableBlock[] {
+	const blocks: TableBlock[] = [];
+	let i = 0;
+	while (i < lines.length) {
+		const line = lines[i]!.trim();
+		if (line.startsWith('|')) {
+			const start = i;
+			let end = i;
+			while (end + 1 < lines.length && lines[end + 1]!.trim().startsWith('|')) {
+				end++;
+			}
+			blocks.push({ start, end });
+			i = end + 1;
+		} else {
+			i++;
+		}
+	}
+	return blocks;
+}
+
+/**
+ * Find the source position of a specific table element by matching its position
+ * among all tables in the DOM (the Nth table in the DOM = the Nth table block in source).
+ */
+export function findTableInSource(sourceLines: string[], tableEl: HTMLTableElement): TableBlock | null {
+	// Find all table blocks in source
+	const blocks = findAllTableBlocks(sourceLines);
+	if (blocks.length === 0) return null;
+
+	// Find the index of this table among all tables in the document
+	const allTables = Array.from(activeDocument.querySelectorAll('table'));
+	const tableIndex = allTables.indexOf(tableEl);
+
+	if (tableIndex < 0) {
+		// Fallback: try content matching
+		return findTableByContent(sourceLines, tableEl, blocks);
+	}
+
+	// Count how many tables before this one in the same container
+	// to handle nested tables and multiple editors
+	const container = tableEl.closest('.markdown-preview-view, .markdown-source-view, .cm-editor')
+		?? tableEl.closest('.view-content')
+		?? activeDocument.body;
+	const tablesInContainer = Array.from(container.querySelectorAll('table'));
+	const localIndex = tablesInContainer.indexOf(tableEl);
+
+	if (localIndex >= 0 && localIndex < blocks.length) {
+		return blocks[localIndex]!;
+	}
+
+	// Fallback: use global index
+	if (tableIndex < blocks.length) {
+		return blocks[tableIndex]!;
+	}
+
+	// Last fallback: content matching
+	return findTableByContent(sourceLines, tableEl, blocks);
+}
+
+/**
+ * Fallback: find table by matching first row content.
+ */
+function findTableByContent(sourceLines: string[], tableEl: HTMLTableElement, blocks: TableBlock[]): TableBlock | null {
 	const firstRow = tableEl.querySelector('tr');
 	if (!firstRow) return null;
 	const firstRowText = Array.from(firstRow.querySelectorAll('td, th'))
 		.map(c => c.textContent?.trim() ?? '')
 		.join('|');
 
-	// Scan source for matching table start
-	for (let i = 0; i < sourceLines.length; i++) {
-		const line = sourceLines[i]!.trim();
-		if (!line.startsWith('|')) continue;
-
-		// Check if first row content matches
+	for (const block of blocks) {
+		const line = sourceLines[block.start]!.trim();
 		const srcCells = line.split('|').filter(c => c.trim() !== '').map(c => c.trim()).join('|');
-		if (srcCells !== firstRowText) continue;
-
-		// Found potential start — find end
-		let end = i;
-		for (let j = i + 1; j < sourceLines.length; j++) {
-			const l = sourceLines[j]!.trim();
-			if (l.startsWith('|')) {
-				end = j;
-			} else {
-				break;
-			}
+		if (srcCells === firstRowText) {
+			return block;
 		}
-		return { start: i, end };
 	}
 	return null;
 }
 
 /**
  * Replace a table in the active file using the Editor API (for live preview).
- * Uses editor.replaceRange() which properly triggers Obsidian's live preview re-render.
  */
 export function replaceTableInEditor(
 	editor: Editor,
