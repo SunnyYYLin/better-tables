@@ -222,7 +222,7 @@
 	position: absolute;
 	top: 0;
 	left: 0;
-	transform: translateY(calc(-100% - 6px));
+	transform: translateX(calc(-100% - 6px));
 	z-index: 20;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 4px;
