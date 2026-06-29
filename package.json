@@ -1,6 +1,6 @@
 {
 	"name": "better-tables",
-	"version": "0.0.1",
+	"version": "0.0.2-beta.1",
 	"description": "Enhanced table support for Obsidian with advanced features like table headers, cell merging, and more.",
 	"main": "main.js",
 	"type": "module",
@@ -10,7 +10,12 @@
 		"version": "bun version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint ."
 	},
-	"keywords": ["obsidian", "table", "markdown", "plugin"],
+	"keywords": [
+		"obsidian",
+		"table",
+		"markdown",
+		"plugin"
+	],
 	"license": "0-BSD",
 	"devDependencies": {
 		"@eslint/js": "^9.39.4",
