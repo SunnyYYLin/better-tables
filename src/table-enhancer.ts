@@ -417,6 +417,10 @@ export class TableEnhancer {
 			if (e.button === 2) return;
 			const target = e.target as HTMLElement;
 			if (target.closest('.better-table-convert-button')) return;
+
+			// Close any active menus before stopping propagation
+			activeDocument.querySelectorAll('.menu, .table-context-menu').forEach(menu => menu.remove());
+
 			e.preventDefault();
 			e.stopPropagation();
 		};
