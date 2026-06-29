@@ -305,9 +305,15 @@ export function replaceTableRangeInEditor(
 	const newLineCount = newContent.split('\n').length;
 	editor.replaceRange(newContent, from, to);
 	const maxLine = editor.getValue().split('\n').length - 1;
-	const restoredAnchor = restorePosition(anchor, range, oldLineCount, newLineCount, maxLine);
-	const restoredHead = restorePosition(head, range, oldLineCount, newLineCount, maxLine);
-	editor.setSelection(restoredAnchor, restoredHead);
+
+	const isCursorInTable = (anchor.line >= range.start && anchor.line <= range.end) ||
+		(head.line >= range.start && head.line <= range.end);
+
+	if (isCursorInTable) {
+		const restoredAnchor = restorePosition(anchor, range, oldLineCount, newLineCount, maxLine);
+		const restoredHead = restorePosition(head, range, oldLineCount, newLineCount, maxLine);
+		editor.setSelection(restoredAnchor, restoredHead);
+	}
 	editor.scrollTo(scrollInfo.left, scrollInfo.top);
 	return true;
 }
