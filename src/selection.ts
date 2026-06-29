@@ -131,15 +131,20 @@ export const SelectionManager = {
 	 * Any td/th nodes inside the selection are marked as selected.
 	 */
 	syncFromNativeSelection(tableEl: HTMLTableElement): void {
-		this.clearTable(tableEl);
 		const sel = activeWindow.getSelection();
-		if (!sel || sel.rangeCount === 0) return;
-		const range = sel.getRangeAt(0);
-		const cells = Array.from(tableEl.querySelectorAll<HTMLElement>('td, th'));
-		for (const cell of cells) {
-			if (range.intersectsNode(cell)) {
-				this.select(tableEl, cell);
-			}
-		}
+		if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+
+		const selectedCells = Array.from(tableEl.querySelectorAll<HTMLElement>('td, th'))
+			.filter(cell => {
+				for (let i = 0; i < sel.rangeCount; i++) {
+					if (sel.getRangeAt(i).intersectsNode(cell)) return true;
+				}
+				return false;
+			});
+
+		if (selectedCells.length < 2) return;
+		this.clearTable(tableEl);
+		selectedCells.forEach(cell => this.select(tableEl, cell));
+		this.setLastSelected(tableEl, selectedCells[selectedCells.length - 1]!);
 	},
 };
