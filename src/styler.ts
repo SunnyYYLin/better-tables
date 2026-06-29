@@ -76,6 +76,38 @@ export class TableStyler {
 		});
 	}
 
+	static autoFitSelectedColumns(tableEl: HTMLTableElement, colIndices: number[]): void {
+		colIndices.forEach(colIndex => {
+			this.autoFitColumn(tableEl, colIndex);
+		});
+	}
+
+	static equalizeSelectedColumns(tableEl: HTMLTableElement, colIndices: number[]): void {
+		if (colIndices.length === 0) return;
+
+		const firstRow = tableEl.querySelector('tr');
+		if (!firstRow) return;
+
+		const headerCells = Array.from(firstRow.querySelectorAll('td, th'));
+		let totalWidth = 0;
+		let validCount = 0;
+
+		colIndices.forEach(colIndex => {
+			const cell = headerCells[colIndex] as HTMLElement;
+			if (cell) {
+				totalWidth += cell.offsetWidth;
+				validCount++;
+			}
+		});
+
+		if (validCount === 0) return;
+		const equalWidth = totalWidth / validCount;
+
+		colIndices.forEach(colIndex => {
+			this.setColumnWidth(tableEl, colIndex, equalWidth);
+		});
+	}
+
 	private static getNoWrapCellWidth(cell: HTMLElement): number {
 		const styles = activeWindow.getComputedStyle(cell);
 		const canvas = activeDocument.createElement('canvas');

@@ -56,6 +56,8 @@ export interface Locale {
 	middle: string;
 	bottom: string;
 	tableOptions: string;
+	autoFitSelectedColumns: string;
+	equalSelectedColumnWidth: string;
 }
 
 export const locales: Record<string, Locale> = {
@@ -115,6 +117,8 @@ export const locales: Record<string, Locale> = {
 		middle: 'Middle',
 		bottom: 'Bottom',
 		tableOptions: 'Table options',
+		autoFitSelectedColumns: 'Auto-fit selected columns',
+		equalSelectedColumnWidth: 'Equalize selected columns',
 	},
 	zh: {
 		mergeCells: '合并单元格',
@@ -172,6 +176,8 @@ export const locales: Record<string, Locale> = {
 		middle: '垂直居中',
 		bottom: '底部',
 		tableOptions: '表格操作',
+		autoFitSelectedColumns: '自适应选中列宽',
+		equalSelectedColumnWidth: '均分选中列宽',
 	},
 };
 

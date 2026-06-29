@@ -109,7 +109,20 @@ export class TableEnhancer {
 		});
 	}
 
-	// ---- Editor context menu ----
+	private getSelectedColumnIndices(tableEl: HTMLTableElement): number[] {
+		const selected = SelectionManager.getSelected(tableEl);
+		const cols = new Set<number>();
+		if (selected.length > 0) {
+			selected.forEach(cell => {
+				const pos = getCellPosition(cell);
+				if (pos) cols.add(pos.col);
+			});
+		} else if (this.lastRightClickedCell) {
+			const pos = getCellPosition(this.lastRightClickedCell);
+			if (pos) cols.add(pos.col);
+		}
+		return Array.from(cols).sort((a, b) => a - b);
+	}
 
 	buildEditorMenu(menu: Menu, editor: Editor): void {
 		const tableEl = this.lastRightClickedTable;
@@ -124,7 +137,6 @@ export class TableEnhancer {
 		const canMerge = selected.length >= 2;
 		const canUnmerge = this.getActionMergedCell(tableEl) !== null;
 		const canAlign = selected.length > 0 || this.lastRightClickedCell !== null;
-		const canAddCaption = this.isWholeTableSelected(tableEl) && !tableEl.querySelector('caption');
 
 		menu.addSeparator();
 		if (canMerge) {
@@ -139,38 +151,22 @@ export class TableEnhancer {
 					.onClick(() => this.unmergeCells(tableEl, editor))
 			);
 		}
-		menu.addItem((item) =>
-			item.setTitle(t.toggleHeaderRow)
-				.onClick(() => this.toggleHeaderRow(tableEl, editor))
-		);
-		menu.addItem((item) =>
-			item.setTitle(t.toggleHeaderColumn)
-				.setDisabled(!tableEl)
-				.onClick(() => {
-					if (tableEl) this.toggleHeaderColumn(tableEl, editor);
-				})
-		);
-		if (canAddCaption) {
-			menu.addItem((item) =>
-				item.setTitle(t.addCaption)
-					.onClick(() => this.addCaption(tableEl, editor))
-			);
-		}
 
 		this.addSubmenu(menu, t.columnWidth, (submenu) => {
+			const selectedCols = this.getSelectedColumnIndices(tableEl);
 			submenu.addItem((item) =>
-				item.setTitle(t.autoFitColumns)
+				item.setTitle(t.autoFitSelectedColumns)
 					.onClick(() => {
 						if (!this.canPersistLiveTable(editor, tableEl)) return;
-						TableStyler.autoFitColumns(tableEl);
+						TableStyler.autoFitSelectedColumns(tableEl, selectedCols);
 						this.persistTableChanges(tableEl, editor);
 					})
 			);
 			submenu.addItem((item) =>
-				item.setTitle(t.equalColumnWidth)
+				item.setTitle(t.equalSelectedColumnWidth)
 					.onClick(() => {
 						if (!this.canPersistLiveTable(editor, tableEl)) return;
-						TableStyler.equalizeColumns(tableEl);
+						TableStyler.equalizeSelectedColumns(tableEl, selectedCols);
 						this.persistTableChanges(tableEl, editor);
 					})
 			);
@@ -1046,29 +1042,22 @@ export class TableEnhancer {
 		const canMerge = selected.length >= 2;
 		const canUnmerge = this.getActionMergedCell(tableEl) !== null;
 		const canAlign = selected.length > 0 || this.lastRightClickedCell !== null;
-		const canAddCaption = this.isWholeTableSelected(tableEl) && !tableEl.querySelector('caption');
 
 		if (canMerge) actions.push({ text: t.mergeCells, action: () => this.mergeSelectedCells(tableEl) });
 		if (canUnmerge) actions.push({ text: t.unmergeCells, action: () => this.unmergeCells(tableEl) });
 		if (actions.length > 0) actions.push({ separator: true });
 
+		const selectedCols = this.getSelectedColumnIndices(tableEl);
 		actions.push(
-			{ text: t.toggleHeaderRow, action: () => this.toggleHeaderRow(tableEl) },
-			{ text: t.toggleHeaderColumn, action: () => this.toggleHeaderColumn(tableEl) },
-		);
-		if (canAddCaption) actions.push({ text: t.addCaption, action: () => this.addCaption(tableEl) });
-
-		actions.push(
-			{ separator: true },
 			{
 				text: t.columnWidth,
 				children: [
-					{ text: t.autoFitColumns, action: () => {
-						TableStyler.autoFitColumns(tableEl);
+					{ text: t.autoFitSelectedColumns, action: () => {
+						TableStyler.autoFitSelectedColumns(tableEl, selectedCols);
 						this.persistTableChanges(tableEl);
 					} },
-					{ text: t.equalColumnWidth, action: () => {
-						TableStyler.equalizeColumns(tableEl);
+					{ text: t.equalSelectedColumnWidth, action: () => {
+						TableStyler.equalizeSelectedColumns(tableEl, selectedCols);
 						this.persistTableChanges(tableEl);
 					} },
 				],
